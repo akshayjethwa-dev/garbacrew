@@ -1,0 +1,8 @@
+{
+  "name": "GarbaCrew",
+  "description": "Find and join Navratri Garba night dance crews, connect with fellow dancers, and discover local photographers.",
+  "permissions": [],
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

@@ -1,48 +1,52 @@
 // src/config/firebase.ts
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { initializeAuth, getAuth } from 'firebase/auth';
-// @ts-ignore — getReactNativePersistence exists at runtime but is not in web types
-import { getReactNativePersistence } from 'firebase/auth';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getAuth, browserLocalPersistence, setPersistence } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 
-const firebaseConfig = {
-  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
+const getEnv = (key: string): string | undefined => {
+  if (typeof import.meta !== 'undefined' && (import.meta as any).env) {
+    return (import.meta as any).env[key];
+  }
+  const globalObj = typeof globalThis !== 'undefined' ? (globalThis as any) : {};
+  if (globalObj.process && globalObj.process.env) {
+    return globalObj.process.env[key];
+  }
+  return undefined;
 };
 
-// Fail fast if any required config is missing.
-// This prevents cryptic Firebase errors at runtime.
-const missingKeys = Object.entries(firebaseConfig)
-  .filter(([, value]) => !value)
-  .map(([key]) => key);
+const apiKey = getEnv('VITE_FIREBASE_API_KEY') || getEnv('EXPO_PUBLIC_FIREBASE_API_KEY');
+const authDomain = getEnv('VITE_FIREBASE_AUTH_DOMAIN') || getEnv('EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN');
+const projectId = getEnv('VITE_FIREBASE_PROJECT_ID') || getEnv('EXPO_PUBLIC_FIREBASE_PROJECT_ID');
+const storageBucket = getEnv('VITE_FIREBASE_STORAGE_BUCKET') || getEnv('EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET');
+const messagingSenderId = getEnv('VITE_FIREBASE_MESSAGING_SENDER_ID') || getEnv('EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID');
+const appId = getEnv('VITE_FIREBASE_APP_ID') || getEnv('EXPO_PUBLIC_FIREBASE_APP_ID');
 
-if (missingKeys.length > 0) {
-  throw new Error(
-    `Missing Firebase config: ${missingKeys.join(', ')}. ` +
-      `Check your .env file and restart Expo with "npx expo start --clear".`
-  );
+export const isFirebaseConfigured = Boolean(apiKey && projectId && authDomain);
+
+let app: any = null;
+let auth: any = null;
+let db: any = null;
+let storage: any = null;
+
+if (isFirebaseConfigured) {
+  try {
+    const firebaseConfig = {
+      apiKey,
+      authDomain,
+      projectId,
+      storageBucket,
+      messagingSenderId,
+      appId,
+    };
+    app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+    auth = getAuth(app);
+    setPersistence(auth, browserLocalPersistence).catch(() => {});
+    db = getFirestore(app);
+    storage = getStorage(app);
+  } catch (err) {
+    console.warn('[AI Studio] Firebase init failed, operating in mock data mode', err);
+  }
 }
 
-// Reuse existing app on Fast Refresh to avoid duplicate initialization errors
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-
-// Firebase Auth: use React Native persistence so users stay logged in
-let auth: ReturnType<typeof getAuth>;
-try {
-  auth = initializeAuth(app, {
-    persistence: getReactNativePersistence(AsyncStorage),
-  });
-} catch {
-  // If already initialized (Fast Refresh), fall back to getAuth
-  auth = getAuth(app);
-}
-
-export const db = getFirestore(app);
-export const storage = getStorage(app);
-export { auth };
+export { app, auth, db, storage };
