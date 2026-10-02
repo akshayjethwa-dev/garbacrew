@@ -1,16 +1,8 @@
 import React, { useState, useEffect, useCallback } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  Alert,
-  TouchableOpacity,
-} from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import OTPInput from "../../src/components/auth/OTPInput";
-import { verifyOTP, sendOTP } from "../../src/services/authService";
-import { auth, db } from "../../src/lib/firebase";
-import { doc, getDoc } from "firebase/firestore";
+import { verifyOTP } from "../../src/services/authService";
 
 export default function OTPScreen() {
   const router = useRouter();
@@ -22,14 +14,10 @@ export default function OTPScreen() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [countdown, setCountdown] = useState(30);
-  const [verificationId, setVerificationId] = useState(params.verificationId);
 
-  // Countdown timer
   useEffect(() => {
     if (countdown <= 0) return;
-    const timer = setInterval(() => {
-      setCountdown((prev) => prev - 1);
-    }, 1000);
+    const timer = setInterval(() => setCountdown((p) => p - 1), 1000);
     return () => clearInterval(timer);
   }, [countdown]);
 
@@ -37,13 +25,10 @@ export default function OTPScreen() {
     async (code: string) => {
       setLoading(true);
       setError("");
-
-      const result = await verifyOTP(verificationId, code);
-
+      const result = await verifyOTP(params.verificationId, code);
       setLoading(false);
 
       if (result.user) {
-        // Check profile completeness
         if (result.user.profileComplete) {
           router.replace("/(tabs)/crews");
         } else {
@@ -56,16 +41,12 @@ export default function OTPScreen() {
         setError(result.error || "Verification failed. Try again.");
       }
     },
-    [verificationId]
+    [params.verificationId]
   );
 
-  const handleResend = async () => {
+  const handleResend = () => {
     setCountdown(30);
     setError("");
-
-    // Re-send OTP — you need a new reCAPTCHA verifier
-    // For simplicity, navigate back to login for re-send
-    // In production, keep the verifier ref alive
     router.back();
   };
 
@@ -100,12 +81,7 @@ const styles = StyleSheet.create({
   backButton: { marginTop: 60, marginBottom: 20 },
   backText: { fontSize: 16, color: "#E91E63", fontWeight: "600" },
   content: { alignItems: "center", marginTop: 40 },
-  title: {
-    fontSize: 26,
-    fontWeight: "800",
-    color: "#1A1A1A",
-    marginBottom: 12,
-  },
+  title: { fontSize: 26, fontWeight: "800", color: "#1A1A1A", marginBottom: 12 },
   subtitle: {
     fontSize: 15,
     color: "#666",

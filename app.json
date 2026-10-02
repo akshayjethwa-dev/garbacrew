@@ -1,7 +1,14 @@
 {
   "expo": {
+    "name": "GarbaCrew",
+    "slug": "garbacrew",
     "scheme": "garbacrew",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
     "plugins": [
+      "expo-router",
       [
         "expo-camera",
         {
@@ -22,11 +29,22 @@
       ]
     ],
     "ios": {
-      "bundleIdentifier": "com.garbacrew.app"
+      "bundleIdentifier": "com.garbacrew.app",
+      "supportsTablet": true
     },
     "android": {
       "package": "com.garbacrew.app",
-      "googleServicesFile": "./google-services.json"
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#E91E63"
+      }
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static"
+    },
+    "experiments": {
+      "typedRoutes": true
     }
   }
 }

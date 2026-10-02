@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -10,12 +10,9 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { FirebaseRecaptchaVerifierModal } from "expo-firebase-recaptcha";
+import { FirebasePhoneCaptchaModal } from "expo-firebase-phone-auth-recaptcha";
 import PhoneInput from "../../src/components/auth/PhoneInput";
 import GoogleSignInButton from "../../src/components/auth/GoogleSignInButton";
-import { sendOTP } from "../../src/services/authService";
-import { auth } from "../../src/lib/firebase";
-import { useAuth } from "../../src/hooks/useAuth";
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -23,7 +20,9 @@ export default function LoginScreen() {
   const [countryCode, setCountryCode] = useState("+91");
   const [phoneError, setPhoneError] = useState("");
   const [loading, setLoading] = useState(false);
-  const recaptchaVerifier = useRef<FirebaseRecaptchaVerifierModal>(null);
+
+  // State to trigger the reCAPTCHA modal
+  const [captchaPhoneNumber, setCaptchaPhoneNumber] = useState("");
 
   const validatePhone = (): boolean => {
     if (!phone || phone.length < 10) {
@@ -34,24 +33,19 @@ export default function LoginScreen() {
     return true;
   };
 
-  const handleContinue = async () => {
+  const handleContinue = () => {
     if (!validatePhone()) return;
-
-    setLoading(true);
     const fullPhone = `${countryCode}${phone}`;
+    // Opening the modal automatically sends the OTP
+    setCaptchaPhoneNumber(fullPhone);
+  };
 
-    const result = await sendOTP(fullPhone, recaptchaVerifier.current);
-
-    setLoading(false);
-
-    if (result.success) {
-      router.push({
-        pathname: "/(auth)/otp",
-        params: { phone: fullPhone, verificationId: result.verificationId },
-      });
-    } else {
-      Alert.alert("Error", result.error || "Failed to send OTP");
-    }
+  const handleVerificationId = (verificationId: string) => {
+    setCaptchaPhoneNumber("");
+    router.push({
+      pathname: "/(auth)/otp",
+      params: { phone: `${countryCode}${phone}`, verificationId },
+    });
   };
 
   return (
@@ -59,18 +53,10 @@ export default function LoginScreen() {
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       style={styles.container}
     >
-      <FirebaseRecaptchaVerifierModal
-        ref={recaptchaVerifier}
-        firebaseConfig={auth.app.options}
-        attemptInvisibleVerification
-      />
-
       <View style={styles.content}>
         <Text style={styles.logo}>🪩</Text>
         <Text style={styles.title}>Welcome to GarbaCrew</Text>
-        <Text style={styles.subtitle}>
-          Find your crew. Join the celebration.
-        </Text>
+        <Text style={styles.subtitle}>Find your crew. Join the celebration.</Text>
 
         <View style={styles.form}>
           <Text style={styles.label}>Phone Number</Text>
@@ -104,6 +90,30 @@ export default function LoginScreen() {
         </View>
       </View>
 
+      {/* ✅ WebView-based reCAPTCHA modal */}
+      <FirebasePhoneCaptchaModal
+        visible={!!captchaPhoneNumber}
+        phoneNumber={captchaPhoneNumber}
+        firebaseConfig={{
+          apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY!,
+          authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN!,
+          projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID!,
+          storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET!,
+          messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID!,
+          appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID!,
+        }}
+        onVerificationId={handleVerificationId}
+        onExpired={() => {
+          setCaptchaPhoneNumber("");
+          Alert.alert("Expired", "The captcha expired. Please try again.");
+        }}
+        onError={(err: any) => {
+          setCaptchaPhoneNumber("");
+          Alert.alert("Error", err?.message || "Failed to send OTP");
+        }}
+        onClose={() => setCaptchaPhoneNumber("")}
+      />
+
       <Text style={styles.terms}>
         By continuing, you agree to our Terms of Service and Privacy Policy
       </Text>
@@ -123,12 +133,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 28, fontWeight: "800", color: "#1A1A1A", marginBottom: 8 },
   subtitle: { fontSize: 16, color: "#666", marginBottom: 40 },
   form: { width: "100%" },
-  label: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#333",
-    marginBottom: 8,
-  },
+  label: { fontSize: 14, fontWeight: "600", color: "#333", marginBottom: 8 },
   continueButton: {
     backgroundColor: "#E91E63",
     borderRadius: 14,
@@ -139,11 +144,7 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: { opacity: 0.6 },
   continueText: { color: "#FFF", fontSize: 17, fontWeight: "700" },
-  divider: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginVertical: 24,
-  },
+  divider: { flexDirection: "row", alignItems: "center", marginVertical: 24 },
   dividerLine: { flex: 1, height: 1, backgroundColor: "#E0E0E0" },
   dividerText: { marginHorizontal: 16, color: "#999", fontSize: 14 },
   terms: {

@@ -13,18 +13,19 @@ import { useRouter } from "expo-router";
 
 WebBrowser.maybeCompleteAuthSession();
 
-// Replace with your Google OAuth Client IDs
-const GOOGLE_CLIENT_ID =
-  "YOUR_WEB_CLIENT_ID.apps.googleusercontent.com";
+// Replace with your Google OAuth Client IDs from Firebase Console
+const GOOGLE_WEB_CLIENT_ID = "YOUR_WEB_CLIENT_ID.apps.googleusercontent.com";
+const GOOGLE_IOS_CLIENT_ID = "YOUR_IOS_CLIENT_ID.apps.googleusercontent.com";
+const GOOGLE_ANDROID_CLIENT_ID = "YOUR_ANDROID_CLIENT_ID.apps.googleusercontent.com";
 
 export default function GoogleSignInButton() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
 
   const [request, response, promptAsync] = Google.useAuthRequest({
-    webClientId: GOOGLE_CLIENT_ID,
-    iosClientId: "YOUR_IOS_CLIENT_ID.apps.googleusercontent.com",
-    androidClientId: "YOUR_ANDROID_CLIENT_ID.apps.googleusercontent.com",
+    webClientId: GOOGLE_WEB_CLIENT_ID,
+    iosClientId: GOOGLE_IOS_CLIENT_ID,
+    androidClientId: GOOGLE_ANDROID_CLIENT_ID,
   });
 
   React.useEffect(() => {
@@ -41,7 +42,6 @@ export default function GoogleSignInButton() {
 
     if (result.user) {
       if (result.needsPhone) {
-        // Google user without phone — must add phone for one-account enforcement
         Alert.alert(
           "Phone Required",
           "Please add your phone number to continue. This helps us keep GarbaCrew safe.",
@@ -53,7 +53,7 @@ export default function GoogleSignInButton() {
           ]
         );
       } else if (result.user.profileComplete) {
-        router.replace("/(tabs)/crews");
+        router.replace("/(tabs)/profile");
       } else {
         router.replace("/(auth)/profile-setup");
       }

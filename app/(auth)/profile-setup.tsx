@@ -31,7 +31,7 @@ import StepBio from "../../src/components/profile-setup/StepBio";
 export default function ProfileSetupScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ isNewUser?: string }>();
-  const { currentStep, nextStep, prevStep, data, updateData } = useProfileStore();
+  const { currentStep, nextStep, prevStep, data } = useProfileStore();
   const [saving, setSaving] = useState(false);
 
   const steps = [
@@ -48,7 +48,7 @@ export default function ProfileSetupScreen() {
 
   const validateCurrentStep = (): boolean => {
     switch (currentStep) {
-      case 1: // Basic Info
+      case 1:
         if (!data.name.trim()) {
           Alert.alert("Required", "Please enter your name");
           return false;
@@ -62,19 +62,19 @@ export default function ProfileSetupScreen() {
           return false;
         }
         return true;
-      case 2: // Location
+      case 2:
         if (!data.city) {
           Alert.alert("Required", "Please select your city");
           return false;
         }
         return true;
-      case 3: // Languages
+      case 3:
         if (data.languages.length === 0) {
           Alert.alert("Required", "Select at least one language");
           return false;
         }
         return true;
-      case 4: // Activities
+      case 4:
         if (data.activities.length === 0) {
           Alert.alert("Required", "Select at least one activity");
           return false;
@@ -103,20 +103,17 @@ export default function ProfileSetupScreen() {
 
     setSaving(true);
     try {
-      let photoUrl = null;
+      let photoUrl: string | null = null;
 
-      // Upload photo if selected
       if (data.photoUri) {
         photoUrl = await uploadProfilePhoto(user.uid, data.photoUri);
       }
 
-      // Compute profile score
       const score = computeProfileScore({
         ...data,
         photoUrl,
       });
 
-      // Update user doc in Firestore
       const userRef = doc(db, "users", user.uid);
       await updateDoc(userRef, {
         ...data,
@@ -126,6 +123,7 @@ export default function ProfileSetupScreen() {
         updatedAt: serverTimestamp(),
       });
 
+      // ✅ This now works because app/(tabs)/crews.tsx exists
       router.replace("/(tabs)/crews");
     } catch (error: any) {
       console.error("Profile save error:", error);

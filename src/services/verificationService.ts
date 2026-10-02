@@ -8,20 +8,8 @@ export interface LivenessResult {
   message: string;
 }
 
-/**
- * Upload selfie frames to Cloud Function for AWS Rekognition CompareFaces.
- *
- * In production, the Cloud Function handles:
- * 1. Receiving 3 frames (front, left, right)
- * 2. Calling AWS Rekognition CompareFaces between front+left, front+right
- * 3. Computing average similarity
- * 4. Returning result
- */
-export async function verifySelfie(
-  frames: string[] // base64 encoded images
-): Promise<LivenessResult> {
+export async function verifySelfie(frames: string[]): Promise<LivenessResult> {
   try {
-    // Call your Cloud Function
     const response = await fetch(
       "https://YOUR_REGION-YOUR_PROJECT.cloudfunctions.net/verifySelfie",
       {
@@ -39,7 +27,6 @@ export async function verifySelfie(
 
     const data = await response.json();
 
-    // Update Firestore based on result
     if (data.similarity > 90) {
       const userRef = doc(db, "users", auth.currentUser!.uid);
       await updateDoc(userRef, {
@@ -71,9 +58,6 @@ function getVerificationMessage(similarity: number): string {
   return "Verification failed. Please ensure good lighting and try again.";
 }
 
-/**
- * Liveness prompts — random sequence.
- */
 export const LIVENESS_PROMPTS = [
   { id: "blink", text: "Blink once", icon: "👁️" },
   { id: "smile", text: "Smile", icon: "😊" },

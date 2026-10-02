@@ -1,51 +1,14 @@
 import {
-  signInWithPhoneNumber,
   PhoneAuthProvider,
   signInWithCredential,
   GoogleAuthProvider,
-  signInWithCredential as signInWithGoogleCredential,
-  Auth,
 } from "firebase/auth";
 import { auth, db } from "../lib/firebase";
 import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { GarbaCrewUser } from "../types/user";
 
-export interface PhoneAuthResult {
-  verificationId: string;
-  success: boolean;
-  error?: string;
-}
-
 /**
- * Send OTP to a phone number.
- * Uses Firebase Phone Auth with reCAPTCHA verifier.
- */
-export async function sendOTP(
-  phoneNumber: string, // E.164 format: +919876543210
-  recaptchaVerifier: any
-): Promise<PhoneAuthResult> {
-  try {
-    const confirmationResult = await signInWithPhoneNumber(
-      auth,
-      phoneNumber,
-      recaptchaVerifier
-    );
-    return {
-      verificationId: confirmationResult.verificationId,
-      success: true,
-    };
-  } catch (error: any) {
-    console.error("Phone auth error:", error);
-    return {
-      verificationId: "",
-      success: false,
-      error: getPhoneAuthError(error.code),
-    };
-  }
-}
-
-/**
- * Verify OTP code and sign in.
+ * Verify OTP using the verificationId returned by the reCAPTCHA modal.
  */
 export async function verifyOTP(
   verificationId: string,
@@ -56,19 +19,14 @@ export async function verifyOTP(
     const userCredential = await signInWithCredential(auth, credential);
     const { user } = userCredential;
 
-    // Check if user doc exists
     const userDocRef = doc(db, "users", user.uid);
     const userDoc = await getDoc(userDocRef);
 
     if (userDoc.exists()) {
       const userData = userDoc.data() as GarbaCrewUser;
-      return {
-        user: { ...userData, uid: user.uid },
-        isNewUser: false,
-      };
+      return { user: { ...userData, uid: user.uid }, isNewUser: false };
     }
 
-    // Create new user doc
     const newUser: GarbaCrewUser = {
       uid: user.uid,
       phone: user.phoneNumber,
@@ -86,7 +44,6 @@ export async function verifyOTP(
     };
 
     await setDoc(userDocRef, newUser);
-
     return { user: newUser, isNewUser: true };
   } catch (error: any) {
     console.error("OTP verification error:", error);
@@ -109,7 +66,7 @@ export async function signInWithGoogle(idToken: string): Promise<{
 }> {
   try {
     const credential = GoogleAuthProvider.credential(idToken);
-    const userCredential = await signInWithGoogleCredential(auth, credential);
+    const userCredential = await signInWithCredential(auth, credential);
     const { user } = userCredential;
 
     const userDocRef = doc(db, "users", user.uid);
@@ -124,7 +81,6 @@ export async function signInWithGoogle(idToken: string): Promise<{
       };
     }
 
-    // New user via Google — phone is required for one-account enforcement
     const newUser: GarbaCrewUser = {
       uid: user.uid,
       phone: null,
@@ -142,7 +98,6 @@ export async function signInWithGoogle(idToken: string): Promise<{
     };
 
     await setDoc(userDocRef, newUser);
-
     return { user: newUser, isNewUser: true, needsPhone: true };
   } catch (error: any) {
     console.error("Google sign-in error:", error);
@@ -153,19 +108,6 @@ export async function signInWithGoogle(idToken: string): Promise<{
       error: "Google sign-in failed. Please try again.",
     };
   }
-}
-
-// ─── Error message helpers ───
-
-function getPhoneAuthError(code: string): string {
-  const map: Record<string, string> = {
-    "auth/invalid-phone-number": "Invalid phone number. Please check and try again.",
-    "auth/too-many-requests": "Too many attempts. Please wait 5 minutes.",
-    "auth/quota-exceeded": "SMS quota exceeded. Try again later.",
-    "auth/network-request-failed": "Network error. Check your connection.",
-    "auth/captcha-check-failed": "Verification failed. Please retry.",
-  };
-  return map[code] || "Failed to send OTP. Please try again.";
 }
 
 function getOTPError(code: string): string {

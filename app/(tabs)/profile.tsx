@@ -6,7 +6,7 @@ import {
   ScrollView,
   Image,
 } from "react-native";
-import { useAuth } from "../../src/hooks/useAuth";
+import { useAuth } from "../../src/context/AuthContext";
 import { useProfileScore } from "../../src/hooks/useProfileScore";
 
 export default function ProfileScreen() {
