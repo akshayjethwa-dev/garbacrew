@@ -1,71 +1,117 @@
-import { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
-import { db, auth } from '../../src/config/firebase';
-import { signInAnonymously } from 'firebase/auth';
+import React, { useState, useEffect, useCallback } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  Alert,
+  TouchableOpacity,
+} from "react-native";
+import { useRouter, useLocalSearchParams } from "expo-router";
+import OTPInput from "../../src/components/auth/OTPInput";
+import { verifyOTP, sendOTP } from "../../src/services/authService";
+import { auth, db } from "../../src/lib/firebase";
+import { doc, getDoc } from "firebase/firestore";
 
-export default function OtpScreen() {
-  const { phone } = useLocalSearchParams<{ phone: string }>();
+export default function OTPScreen() {
   const router = useRouter();
-  const [code, setCode] = useState('');
+  const params = useLocalSearchParams<{
+    phone: string;
+    verificationId: string;
+  }>();
 
-  const handleVerify = async () => {
-    // In production, verify the SMS code with Firebase.
-    // For now, create an anonymous session + user doc (dev/demo mode).
-    try {
-      const cred = await signInAnonymously(auth);
-      const userRef = doc(db, 'users', cred.user.uid);
-      const existing = await getDoc(userRef);
-      if (!existing.exists()) {
-        await setDoc(userRef, {
-          phone: `+91${phone}`,
-          name: '',
-          age: null,
-          gender: '',
-          city: '',
-          area: '',
-          bio: '',
-          photoUrl: null,
-          isVerified: false,
-          profileComplete: false,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [countdown, setCountdown] = useState(30);
+  const [verificationId, setVerificationId] = useState(params.verificationId);
+
+  // Countdown timer
+  useEffect(() => {
+    if (countdown <= 0) return;
+    const timer = setInterval(() => {
+      setCountdown((prev) => prev - 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [countdown]);
+
+  const handleComplete = useCallback(
+    async (code: string) => {
+      setLoading(true);
+      setError("");
+
+      const result = await verifyOTP(verificationId, code);
+
+      setLoading(false);
+
+      if (result.user) {
+        // Check profile completeness
+        if (result.user.profileComplete) {
+          router.replace("/(tabs)/crews");
+        } else {
+          router.replace({
+            pathname: "/(auth)/profile-setup",
+            params: { isNewUser: result.isNewUser ? "true" : "false" },
+          });
+        }
+      } else {
+        setError(result.error || "Verification failed. Try again.");
       }
-      // Router will auto-redirect via RootNavigator
-    } catch (e: any) {
-      Alert.alert('Error', e.message);
-    }
+    },
+    [verificationId]
+  );
+
+  const handleResend = async () => {
+    setCountdown(30);
+    setError("");
+
+    // Re-send OTP — you need a new reCAPTCHA verifier
+    // For simplicity, navigate back to login for re-send
+    // In production, keep the verifier ref alive
+    router.back();
   };
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Verify your number</Text>
-      <Text style={styles.subtitle}>Code sent to +91 {phone}</Text>
-
-      <TextInput
-        style={styles.otpInput}
-        placeholder="6-digit code"
-        placeholderTextColor="#666"
-        keyboardType="number-pad"
-        maxLength={6}
-        value={code}
-        onChangeText={setCode}
-      />
-
-      <TouchableOpacity style={styles.button} onPress={handleVerify}>
-        <Text style={styles.buttonText}>Verify</Text>
+      <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+        <Text style={styles.backText}>← Back</Text>
       </TouchableOpacity>
+
+      <View style={styles.content}>
+        <Text style={styles.title}>Verify your number</Text>
+        <Text style={styles.subtitle}>
+          Enter the 6-digit code sent to{"\n"}
+          <Text style={styles.phone}>{params.phone}</Text>
+        </Text>
+
+        <OTPInput
+          length={6}
+          onComplete={handleComplete}
+          onResend={handleResend}
+          resendCountdown={countdown}
+          error={error}
+          loading={loading}
+        />
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0D0D0D', padding: 24, justifyContent: 'center' },
-  title: { fontSize: 24, fontWeight: '700', color: '#fff', marginBottom: 8 },
-  subtitle: { color: '#B0B0B0', marginBottom: 32 },
-  otpInput: { backgroundColor: '#1A1A1A', borderRadius: 16, height: 56, color: '#fff', fontSize: 24, textAlign: 'center', letterSpacing: 8, marginBottom: 24 },
-  button: { backgroundColor: '#FF6B35', borderRadius: 16, height: 56, alignItems: 'center', justifyContent: 'center' },
-  buttonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  container: { flex: 1, backgroundColor: "#FFF", paddingHorizontal: 24 },
+  backButton: { marginTop: 60, marginBottom: 20 },
+  backText: { fontSize: 16, color: "#E91E63", fontWeight: "600" },
+  content: { alignItems: "center", marginTop: 40 },
+  title: {
+    fontSize: 26,
+    fontWeight: "800",
+    color: "#1A1A1A",
+    marginBottom: 12,
+  },
+  subtitle: {
+    fontSize: 15,
+    color: "#666",
+    textAlign: "center",
+    marginBottom: 32,
+    lineHeight: 22,
+  },
+  phone: { fontWeight: "700", color: "#1A1A1A" },
 });

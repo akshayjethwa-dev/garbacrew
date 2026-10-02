@@ -1,23 +1,27 @@
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import React from 'react';
+import { AlertCircle } from 'lucide-react';
 
-export function ErrorState({ message, onRetry }: { message?: string; onRetry: () => void }) {
-  return (
-    <View style={styles.container}>
-      <Ionicons name="alert-circle-outline" size={48} color="#F44336" />
-      <Text style={styles.title}>Something went wrong</Text>
-      <Text style={styles.subtitle}>{message ?? 'Check your connection and try again.'}</Text>
-      <TouchableOpacity style={styles.button} onPress={onRetry}>
-        <Text style={styles.buttonText}>Retry</Text>
-      </TouchableOpacity>
-    </View>
-  );
+interface ErrorStateProps {
+  message?: string;
+  onRetry?: () => void;
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
-  title: { fontSize: 18, fontWeight: '700', color: '#fff', marginTop: 16 },
-  subtitle: { fontSize: 14, color: '#B0B0B0', textAlign: 'center', marginTop: 8 },
-  button: { marginTop: 24, borderWidth: 1, borderColor: '#FF6B35', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 },
-  buttonText: { color: '#FF6B35', fontWeight: '600' },
-});
+export function ErrorState({ message, onRetry }: ErrorStateProps) {
+  return (
+    <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
+      <AlertCircle className="w-12 h-12 text-[#F44336] mb-4" />
+      <h3 className="text-lg font-bold text-white mb-2">Something went wrong</h3>
+      <p className="text-sm text-[#B0B0B0] max-w-xs mb-6">
+        {message ?? 'Check your connection and try again.'}
+      </p>
+      {onRetry && (
+        <button
+          onClick={onRetry}
+          className="px-6 py-2.5 rounded-xl border border-[#FF6B35] text-[#FF6B35] font-semibold hover:bg-[#FF6B35]/10 transition-colors"
+        >
+          Retry
+        </button>
+      )}
+    </div>
+  );
+}

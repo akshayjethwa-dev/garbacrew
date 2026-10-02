@@ -1,187 +1,215 @@
-// app/(auth)/profile-setup.tsx
-import { useState } from 'react';
+import React, { useState } from "react";
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
-  ScrollView,
   Alert,
+  ScrollView,
+  KeyboardAvoidingView,
   Platform,
-} from 'react-native';
-import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
-import { db, auth } from '../../src/config/firebase';
+  ActivityIndicator,
+} from "react-native";
+import { useRouter, useLocalSearchParams } from "expo-router";
+import { useProfileStore, TOTAL_STEPS } from "../../src/store/profileStore";
+import { auth, db } from "../../src/lib/firebase";
+import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { uploadProfilePhoto } from "../../src/services/storageService";
+import { computeProfileScore } from "../../src/services/userService";
 
-const CITIES = ['Ahmedabad', 'Surat', 'Vadodara', 'Rajkot', 'Gandhinagar'];
+import ProgressBar from "../../src/components/profile-setup/ProgressBar";
+import StepPhoto from "../../src/components/profile-setup/StepPhoto";
+import StepBasicInfo from "../../src/components/profile-setup/StepBasicInfo";
+import StepLocation from "../../src/components/profile-setup/StepLocation";
+import StepLanguages from "../../src/components/profile-setup/StepLanguages";
+import StepActivities from "../../src/components/profile-setup/StepActivities";
+import StepDanceSkill from "../../src/components/profile-setup/StepDanceSkill";
+import StepGroupPref from "../../src/components/profile-setup/StepGroupPref";
+import StepVibe from "../../src/components/profile-setup/StepVibe";
+import StepBio from "../../src/components/profile-setup/StepBio";
 
 export default function ProfileSetupScreen() {
-  const [name, setName] = useState('');
-  const [age, setAge] = useState('');
-  const [gender, setGender] = useState<'male' | 'female' | 'other'>('male');
-  const [city, setCity] = useState(CITIES[0]);
-  const [area, setArea] = useState('');
-  const [bio, setBio] = useState('');
+  const router = useRouter();
+  const params = useLocalSearchParams<{ isNewUser?: string }>();
+  const { currentStep, nextStep, prevStep, data, updateData } = useProfileStore();
   const [saving, setSaving] = useState(false);
 
-  const showMessage = (title: string, message: string) => {
-    if (Platform.OS === 'web') {
-      window.alert(`${title}\n\n${message}`);
-    } else {
-      Alert.alert(title, message);
+  const steps = [
+    <StepPhoto key={0} />,
+    <StepBasicInfo key={1} />,
+    <StepLocation key={2} />,
+    <StepLanguages key={3} />,
+    <StepActivities key={4} />,
+    <StepDanceSkill key={5} />,
+    <StepGroupPref key={6} />,
+    <StepVibe key={7} />,
+    <StepBio key={8} />,
+  ];
+
+  const validateCurrentStep = (): boolean => {
+    switch (currentStep) {
+      case 1: // Basic Info
+        if (!data.name.trim()) {
+          Alert.alert("Required", "Please enter your name");
+          return false;
+        }
+        if (!data.age || data.age < 18) {
+          Alert.alert("Must be 18+", "You must be at least 18 years old.");
+          return false;
+        }
+        if (!data.gender) {
+          Alert.alert("Required", "Please select your gender");
+          return false;
+        }
+        return true;
+      case 2: // Location
+        if (!data.city) {
+          Alert.alert("Required", "Please select your city");
+          return false;
+        }
+        return true;
+      case 3: // Languages
+        if (data.languages.length === 0) {
+          Alert.alert("Required", "Select at least one language");
+          return false;
+        }
+        return true;
+      case 4: // Activities
+        if (data.activities.length === 0) {
+          Alert.alert("Required", "Select at least one activity");
+          return false;
+        }
+        return true;
+      default:
+        return true;
     }
   };
 
-  const handleSave = async () => {
-    if (!name.trim() || !age || !area.trim()) {
-      showMessage('Missing fields', 'Please fill name, age, and area');
-      return;
+  const handleNext = () => {
+    if (!validateCurrentStep()) return;
+    if (currentStep < TOTAL_STEPS - 1) {
+      nextStep();
+    } else {
+      handleSubmit();
     }
+  };
 
-    const uid = auth.currentUser?.uid;
-    if (!uid) {
-      showMessage('Error', 'Not signed in. Please log in again.');
+  const handleSubmit = async () => {
+    const user = auth.currentUser;
+    if (!user) {
+      Alert.alert("Error", "Not authenticated");
       return;
     }
 
     setSaving(true);
     try {
-      await updateDoc(doc(db, 'users', uid), {
-        name: name.trim(),
-        age: parseInt(age, 10),
-        gender,
-        city,
-        area: area.trim(),
-        bio: bio.trim(),
+      let photoUrl = null;
+
+      // Upload photo if selected
+      if (data.photoUri) {
+        photoUrl = await uploadProfilePhoto(user.uid, data.photoUri);
+      }
+
+      // Compute profile score
+      const score = computeProfileScore({
+        ...data,
+        photoUrl,
+      });
+
+      // Update user doc in Firestore
+      const userRef = doc(db, "users", user.uid);
+      await updateDoc(userRef, {
+        ...data,
+        photoUrl,
         profileComplete: true,
+        profileScore: score,
         updatedAt: serverTimestamp(),
       });
-      // RootNavigator will auto-redirect to (tabs)/crews
-    } catch (e: any) {
-      showMessage('Error', e.message ?? 'Failed to save profile');
+
+      router.replace("/(tabs)/crews");
+    } catch (error: any) {
+      console.error("Profile save error:", error);
+      Alert.alert("Error", "Failed to save profile. Please try again.");
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>Set up your profile</Text>
-      <Text style={styles.subtitle}>Tell us about yourself so we can match you with the right crews.</Text>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      style={styles.container}
+    >
+      <ProgressBar currentStep={currentStep} totalSteps={TOTAL_STEPS} />
 
-      <Text style={styles.label}>Name</Text>
-      <TextInput
-        style={styles.input}
-        value={name}
-        onChangeText={setName}
-        placeholder="Your name"
-        placeholderTextColor="#666"
-      />
-
-      <Text style={styles.label}>Age</Text>
-      <TextInput
-        style={styles.input}
-        value={age}
-        onChangeText={setAge}
-        placeholder="18"
-        placeholderTextColor="#666"
-        keyboardType="number-pad"
-        maxLength={2}
-      />
-
-      <Text style={styles.label}>Gender</Text>
-      <View style={styles.chipRow}>
-        {(['male', 'female', 'other'] as const).map((g) => (
-          <TouchableOpacity
-            key={g}
-            style={[styles.chip, gender === g && styles.chipActive]}
-            onPress={() => setGender(g)}
-          >
-            <Text style={[styles.chipText, gender === g && styles.chipTextActive]}>
-              {g.charAt(0).toUpperCase() + g.slice(1)}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      <Text style={styles.label}>City</Text>
-      <View style={styles.chipRow}>
-        {CITIES.map((c) => (
-          <TouchableOpacity
-            key={c}
-            style={[styles.chip, city === c && styles.chipActive]}
-            onPress={() => setCity(c)}
-          >
-            <Text style={[styles.chipText, city === c && styles.chipTextActive]}>{c}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      <Text style={styles.label}>Area</Text>
-      <TextInput
-        style={styles.input}
-        value={area}
-        onChangeText={setArea}
-        placeholder="e.g., Satellite"
-        placeholderTextColor="#666"
-      />
-
-      <Text style={styles.label}>Bio (optional)</Text>
-      <TextInput
-        style={[styles.input, styles.textArea]}
-        value={bio}
-        onChangeText={setBio}
-        placeholder="Tell people about you..."
-        placeholderTextColor="#666"
-        multiline
-        maxLength={150}
-      />
-
-      <TouchableOpacity
-        style={[styles.button, saving && styles.buttonDisabled]}
-        onPress={handleSave}
-        disabled={saving}
-        activeOpacity={0.8}
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.buttonText}>{saving ? 'Saving...' : 'Finish'}</Text>
-      </TouchableOpacity>
-    </ScrollView>
+        {steps[currentStep]}
+      </ScrollView>
+
+      <View style={styles.footer}>
+        {currentStep > 0 && (
+          <TouchableOpacity style={styles.backButton} onPress={prevStep}>
+            <Text style={styles.backText}>Back</Text>
+          </TouchableOpacity>
+        )}
+
+        <TouchableOpacity
+          style={[
+            styles.nextButton,
+            currentStep === 0 && { flex: 1, marginLeft: 0 },
+            saving && styles.buttonDisabled,
+          ]}
+          onPress={handleNext}
+          disabled={saving}
+        >
+          {saving ? (
+            <ActivityIndicator color="#FFF" />
+          ) : (
+            <Text style={styles.nextText}>
+              {currentStep === TOTAL_STEPS - 1 ? "Complete Profile" : "Next"}
+            </Text>
+          )}
+        </TouchableOpacity>
+      </View>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0D0D0D' },
-  content: { padding: 24, paddingTop: 60, paddingBottom: 60 },
-  title: { fontSize: 24, fontWeight: '700', color: '#fff', marginBottom: 8 },
-  subtitle: { color: '#B0B0B0', fontSize: 14, marginBottom: 24 },
-  label: { color: '#B0B0B0', fontSize: 14, marginBottom: 8, marginTop: 16 },
-  input: {
-    backgroundColor: '#1A1A1A',
-    borderRadius: 16,
-    height: 56,
-    paddingHorizontal: 16,
-    color: '#fff',
-    fontSize: 16,
+  container: { flex: 1, backgroundColor: "#FFF" },
+  scroll: { flex: 1 },
+  scrollContent: { paddingBottom: 40 },
+  footer: {
+    flexDirection: "row",
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    borderTopWidth: 1,
+    borderTopColor: "#F0F0F0",
+    backgroundColor: "#FFF",
+    gap: 12,
   },
-  textArea: { height: 100, textAlignVertical: 'top', paddingTop: 16 },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 999,
-    backgroundColor: '#1A1A1A',
+  backButton: {
+    flex: 1,
+    height: 54,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: "#E0E0E0",
+    justifyContent: "center",
+    alignItems: "center",
   },
-  chipActive: { backgroundColor: '#FF6B35' },
-  chipText: { color: '#B0B0B0', fontSize: 14 },
-  chipTextActive: { color: '#fff', fontWeight: '600' },
-  button: {
-    backgroundColor: '#FF6B35',
-    borderRadius: 16,
-    height: 56,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 32,
+  backText: { fontSize: 16, fontWeight: "600", color: "#333" },
+  nextButton: {
+    flex: 2,
+    height: 54,
+    borderRadius: 14,
+    backgroundColor: "#E91E63",
+    justifyContent: "center",
+    alignItems: "center",
   },
+  nextText: { fontSize: 16, fontWeight: "700", color: "#FFF" },
   buttonDisabled: { opacity: 0.6 },
-  buttonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
 });

@@ -1,145 +1,156 @@
-// app/(auth)/login.tsx
-import { useState } from 'react';
+import React, { useState, useRef } from "react";
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
-  ActivityIndicator,
+  KeyboardAvoidingView,
   Platform,
   Alert,
-} from 'react-native';
-import { useRouter } from 'expo-router';
+  ActivityIndicator,
+} from "react-native";
+import { useRouter } from "expo-router";
+import { FirebaseRecaptchaVerifierModal } from "expo-firebase-recaptcha";
+import PhoneInput from "../../src/components/auth/PhoneInput";
+import GoogleSignInButton from "../../src/components/auth/GoogleSignInButton";
+import { sendOTP } from "../../src/services/authService";
+import { auth } from "../../src/lib/firebase";
+import { useAuth } from "../../src/hooks/useAuth";
 
 export default function LoginScreen() {
   const router = useRouter();
-  const [phone, setPhone] = useState('');
+  const [phone, setPhone] = useState("");
+  const [countryCode, setCountryCode] = useState("+91");
+  const [phoneError, setPhoneError] = useState("");
   const [loading, setLoading] = useState(false);
+  const recaptchaVerifier = useRef<FirebaseRecaptchaVerifierModal>(null);
 
-  const showError = (title: string, message: string) => {
-    if (Platform.OS === 'web') {
-      // Alert.alert works but shows a simple browser alert on web
-      window.alert(`${title}\n\n${message}`);
-    } else {
-      Alert.alert(title, message);
+  const validatePhone = (): boolean => {
+    if (!phone || phone.length < 10) {
+      setPhoneError("Please enter a valid 10-digit phone number");
+      return false;
     }
+    setPhoneError("");
+    return true;
   };
 
-  const handleSendOtp = () => {
-    if (phone.length !== 10) {
-      showError('Invalid number', 'Enter a 10-digit mobile number');
-      return;
-    }
+  const handleContinue = async () => {
+    if (!validatePhone()) return;
 
     setLoading(true);
+    const fullPhone = `${countryCode}${phone}`;
 
-    // Navigate directly — no Alert in the way.
-    // Phone auth with real SMS requires a dev build (@react-native-firebase/auth).
-    // For now, we forward to OTP screen which creates an anonymous session.
-    router.push({ pathname: '/(auth)/otp', params: { phone } });
+    const result = await sendOTP(fullPhone, recaptchaVerifier.current);
 
-    // Reset loading after navigation
-    setTimeout(() => setLoading(false), 300);
+    setLoading(false);
+
+    if (result.success) {
+      router.push({
+        pathname: "/(auth)/otp",
+        params: { phone: fullPhone, verificationId: result.verificationId },
+      });
+    } else {
+      Alert.alert("Error", result.error || "Failed to send OTP");
+    }
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.logo}>GarbaCrew</Text>
-      <Text style={styles.title}>Enter your phone number</Text>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      style={styles.container}
+    >
+      <FirebaseRecaptchaVerifierModal
+        ref={recaptchaVerifier}
+        firebaseConfig={auth.app.options}
+        attemptInvisibleVerification
+      />
 
-      <View style={styles.inputRow}>
-        <Text style={styles.countryCode}>+91</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="10-digit mobile number"
-          placeholderTextColor="#666"
-          keyboardType="phone-pad"
-          maxLength={10}
-          value={phone}
-          onChangeText={setPhone}
-          onSubmitEditing={handleSendOtp}
-        />
+      <View style={styles.content}>
+        <Text style={styles.logo}>🪩</Text>
+        <Text style={styles.title}>Welcome to GarbaCrew</Text>
+        <Text style={styles.subtitle}>
+          Find your crew. Join the celebration.
+        </Text>
+
+        <View style={styles.form}>
+          <Text style={styles.label}>Phone Number</Text>
+          <PhoneInput
+            value={phone}
+            onChangeText={setPhone}
+            countryCode={countryCode}
+            onCountryChange={setCountryCode}
+            error={phoneError}
+          />
+
+          <TouchableOpacity
+            style={[styles.continueButton, loading && styles.buttonDisabled]}
+            onPress={handleContinue}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator color="#FFF" />
+            ) : (
+              <Text style={styles.continueText}>Continue</Text>
+            )}
+          </TouchableOpacity>
+
+          <View style={styles.divider}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerText}>or</Text>
+            <View style={styles.dividerLine} />
+          </View>
+
+          <GoogleSignInButton />
+        </View>
       </View>
 
-      <TouchableOpacity
-        style={[styles.button, loading && styles.buttonDisabled]}
-        onPress={handleSendOtp}
-        disabled={loading}
-        activeOpacity={0.8}
-      >
-        {loading ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.buttonText}>Continue</Text>
-        )}
-      </TouchableOpacity>
-
       <Text style={styles.terms}>
-        By continuing, you agree to our Terms & Privacy Policy
+        By continuing, you agree to our Terms of Service and Privacy Policy
       </Text>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  container: { flex: 1, backgroundColor: "#FFF" },
+  content: {
     flex: 1,
-    backgroundColor: '#0D0D0D',
-    padding: 24,
-    justifyContent: 'center',
+    paddingHorizontal: 24,
+    justifyContent: "center",
+    alignItems: "center",
   },
-  logo: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: '#FF6B35',
-    textAlign: 'center',
-    marginBottom: 40,
+  logo: { fontSize: 64, marginBottom: 16 },
+  title: { fontSize: 28, fontWeight: "800", color: "#1A1A1A", marginBottom: 8 },
+  subtitle: { fontSize: 16, color: "#666", marginBottom: 40 },
+  form: { width: "100%" },
+  label: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#333",
+    marginBottom: 8,
   },
-  title: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#fff',
-    marginBottom: 24,
-  },
-  inputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#1A1A1A',
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    marginBottom: 24,
-  },
-  countryCode: {
-    color: '#fff',
-    fontSize: 16,
-    marginRight: 8,
-  },
-  input: {
-    flex: 1,
+  continueButton: {
+    backgroundColor: "#E91E63",
+    borderRadius: 14,
     height: 56,
-    color: '#fff',
-    fontSize: 16,
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 20,
   },
-  button: {
-    backgroundColor: '#FF6B35',
-    borderRadius: 16,
-    height: 56,
-    alignItems: 'center',
-    justifyContent: 'center',
+  buttonDisabled: { opacity: 0.6 },
+  continueText: { color: "#FFF", fontSize: 17, fontWeight: "700" },
+  divider: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginVertical: 24,
   },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-  buttonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
+  dividerLine: { flex: 1, height: 1, backgroundColor: "#E0E0E0" },
+  dividerText: { marginHorizontal: 16, color: "#999", fontSize: 14 },
   terms: {
-    color: '#666',
+    textAlign: "center",
+    color: "#999",
     fontSize: 12,
-    textAlign: 'center',
-    marginTop: 16,
+    paddingBottom: 40,
+    paddingHorizontal: 24,
   },
 });
