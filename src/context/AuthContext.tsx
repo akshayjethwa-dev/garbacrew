@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { onAuthStateChanged, User as FirebaseUser } from "firebase/auth";
-import { doc, onSnapshot } from "firebase/firestore";
+import { doc, onSnapshot, Unsubscribe } from "firebase/firestore";
 import { auth, db } from "../lib/firebase";
 import { GarbaCrewUser } from "../types/user";
 
@@ -10,7 +10,6 @@ interface AuthContextType {
   loading: boolean;
 }
 
-// ✅ Safe default — prevents "useAuth must be used within AuthProvider"
 const AuthContext = createContext<AuthContextType>({
   user: null,
   firebaseUser: null,
@@ -22,11 +21,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<GarbaCrewUser | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Listen to Firebase Auth state
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (fbUser) => {
+      console.log("🔥 onAuthStateChanged:", fbUser?.uid ?? "null");
       setFirebaseUser(fbUser);
+
       if (!fbUser) {
+        // Immediately clear user on sign out
         setUser(null);
         setLoading(false);
       }
@@ -34,11 +35,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return unsubscribe;
   }, []);
 
-  // Listen to the Firestore user document
   useEffect(() => {
     if (!firebaseUser) return;
 
-    const unsubscribe = onSnapshot(
+    let unsubDoc: Unsubscribe | null = null;
+
+    unsubDoc = onSnapshot(
       doc(db, "users", firebaseUser.uid),
       (snap) => {
         if (snap.exists()) {
@@ -54,7 +56,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     );
 
-    return unsubscribe;
+    return () => {
+      if (unsubDoc) unsubDoc();
+    };
   }, [firebaseUser]);
 
   return (
@@ -64,7 +68,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-// ✅ Safe hook — never throws
 export function useAuth(): AuthContextType {
   return useContext(AuthContext);
 }

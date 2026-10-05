@@ -1,0 +1,14 @@
+[
+  {
+    "origin": ["http://localhost:8081", "https://your-production-domain.com"],
+    "method": ["GET", "HEAD", "DELETE", "POST", "PUT", "OPTIONS"],
+    "responseHeader": [
+      "Content-Type",
+      "x-firebase-storage-version",
+      "x-goog-upload-protocol",
+      "x-goog-upload-command",
+      "x-goog-upload-offset"
+    ],
+    "maxAgeSeconds": 3600
+  }
+]

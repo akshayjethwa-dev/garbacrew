@@ -95,11 +95,18 @@ export default function ProfileSetupScreen() {
   };
 
   const handleSubmit = async () => {
-    const user = auth.currentUser;
-    if (!user) {
-      Alert.alert("Error", "Not authenticated");
-      return;
-    }
+  const user = auth.currentUser;
+  console.log("🔍 Auth check before upload:", {
+    uid: user?.uid,
+    email: user?.email,
+    isAnonymous: user?.isAnonymous,
+    emailVerified: user?.emailVerified,
+  });
+
+  if (!user) {
+    Alert.alert("Error", "Not authenticated");
+    return;
+  }
 
     setSaving(true);
     try {

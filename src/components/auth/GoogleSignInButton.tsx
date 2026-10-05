@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   TouchableOpacity,
   Text,
@@ -13,25 +13,47 @@ import { useRouter } from "expo-router";
 
 WebBrowser.maybeCompleteAuthSession();
 
-// Replace with your Google OAuth Client IDs from Firebase Console
-const GOOGLE_WEB_CLIENT_ID = "YOUR_WEB_CLIENT_ID.apps.googleusercontent.com";
-const GOOGLE_IOS_CLIENT_ID = "YOUR_IOS_CLIENT_ID.apps.googleusercontent.com";
-const GOOGLE_ANDROID_CLIENT_ID = "YOUR_ANDROID_CLIENT_ID.apps.googleusercontent.com";
+// ⚠️ IMPORTANT: Replace these with your actual Google OAuth Client IDs
+// from the Google Cloud Console (https://console.cloud.google.com/apis/credentials)
+const GOOGLE_WEB_CLIENT_ID =
+  "490755900218-f0prm0ugk872u5khso67946ndu7e4q2m.apps.googleusercontent.com";
+const GOOGLE_IOS_CLIENT_ID =
+  "YOUR_IOS_CLIENT_ID.apps.googleusercontent.com";
+const GOOGLE_ANDROID_CLIENT_ID =
+  "YOUR_ANDROID_CLIENT_ID.apps.googleusercontent.com";
 
 export default function GoogleSignInButton() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
 
-  const [request, response, promptAsync] = Google.useAuthRequest({
+  // ✅ Use useIdTokenAuthRequest to get id_token directly
+  const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
     webClientId: GOOGLE_WEB_CLIENT_ID,
     iosClientId: GOOGLE_IOS_CLIENT_ID,
     androidClientId: GOOGLE_ANDROID_CLIENT_ID,
   });
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (response?.type === "success") {
+      // ✅ The id_token is inside response.params, not response.authentication
       const { id_token } = response.params;
+
+      if (!id_token) {
+        Alert.alert(
+          "Sign-In Failed",
+          "Could not retrieve ID token. Please try again."
+        );
+        return;
+      }
+
       handleGoogleSignIn(id_token);
+    }
+
+    if (response?.type === "error") {
+      Alert.alert(
+        "Sign-In Error",
+        response.error?.message || "Google sign-in failed."
+      );
     }
   }, [response]);
 
@@ -53,7 +75,7 @@ export default function GoogleSignInButton() {
           ]
         );
       } else if (result.user.profileComplete) {
-        router.replace("/(tabs)/profile");
+        router.replace("/(tabs)/crews");
       } else {
         router.replace("/(auth)/profile-setup");
       }

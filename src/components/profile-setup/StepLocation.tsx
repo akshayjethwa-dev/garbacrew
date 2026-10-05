@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -6,11 +6,21 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  Platform,
 } from "react-native";
 import * as Location from "expo-location";
 import { useProfileStore } from "../../store/profileStore";
 
-const CITIES = ["Mumbai", "Pune", "Ahmedabad", "Surat", "Vadodara", "Rajkot", "Delhi", "Bangalore"];
+const CITIES = [
+  "Mumbai",
+  "Pune",
+  "Ahmedabad",
+  "Surat",
+  "Vadodara",
+  "Rajkot",
+  "Delhi",
+  "Bangalore",
+];
 
 export default function StepLocation() {
   const { data, updateData } = useProfileStore();
@@ -25,29 +35,56 @@ export default function StepLocation() {
   const detectLocation = async () => {
     setLoading(true);
     try {
+      // 1. Request permission (works on web and native)
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") {
-        alert("Location permission denied. Please enter manually.");
+        alert(
+          "Location permission denied. Please enter your city manually."
+        );
         setLoading(false);
         return;
       }
 
-      const location = await Location.getCurrentPositionAsync({});
-      const [address] = await Location.reverseGeocodeAsync({
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
+      // 2. Get GPS coordinates (still supported on web)
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
       });
 
+      const { latitude, longitude } = location.coords;
+
+      // 3. Reverse-geocode using BigDataCloud (free, no API key)
+      //    This replaces the removed Location.reverseGeocodeAsync
+      const response = await fetch(
+        `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`
+      );
+
+      if (!response.ok) {
+        throw new Error("Reverse geocoding failed");
+      }
+
+      const geo = await response.json();
+
+      // BigDataCloud response fields:
+      //   city, locality, principalSubdivision (state), countryName
+      const detectedCity =
+        geo.city || geo.locality || geo.principalSubdivision || "";
+      const detectedArea =
+        geo.locality || geo.principalSubdivision || "";
+
       updateData({
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
-        city: address?.city || address?.subregion || "",
-        area: address?.district || address?.street || "",
+        latitude,
+        longitude,
+        city: detectedCity,
+        area: detectedArea,
       });
     } catch (error) {
-      alert("Could not detect location. Please enter manually.");
+      console.error("Location detection error:", error);
+      alert(
+        "Could not detect location automatically. Please enter your city manually."
+      );
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (

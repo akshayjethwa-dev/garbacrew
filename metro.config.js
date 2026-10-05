@@ -2,16 +2,13 @@ const { getDefaultConfig } = require("expo/metro-config");
 
 const config = getDefaultConfig(__dirname);
 
-// ✅ Force Metro to use the React Native build of @firebase/auth
-config.resolver.resolveRequest = (context, moduleName, platform) => {
-  if (moduleName === "@firebase/auth") {
-    return context.resolveRequest(
-      context,
-      "@firebase/auth/dist/rn/index.js",
-      platform
-    );
-  }
-  return context.resolveRequest(context, moduleName, platform);
+// ✅ Fix for "Cross-Origin-Opener-Policy policy would block the window.closed call"
+// This middleware adds the correct COOP header to allow popups to communicate back.
+config.server.enhanceMiddleware = (middleware) => {
+  return (req, res, next) => {
+    res.setHeader("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
+    return middleware(req, res, next);
+  };
 };
 
 // Enable Expo Router file-based routing

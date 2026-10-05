@@ -1,17 +1,33 @@
 import React from "react";
-import { View, Text, StyleSheet, ScrollView } from "react-native";
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  ActivityIndicator,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../../src/context/AuthContext";
 
 export default function CrewsScreen() {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
+
+  // Show a loader while auth is still resolving
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#E91E63" />
+      </View>
+    );
+  }
+
+  // If auth resolved but no user (shouldn't happen here), still guard
+  const firstName = user?.name?.split(" ")[0] || "there";
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.greeting}>
-          Hey {user?.name?.split(" ")[0] || "there"} 👋
-        </Text>
+        <Text style={styles.greeting}>Hey {firstName} 👋</Text>
         <Text style={styles.subtitle}>
           Discover Plans and crews near you.
         </Text>
@@ -38,6 +54,12 @@ export default function CrewsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#FFF" },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#FFF",
+  },
   content: { paddingHorizontal: 24, paddingTop: 20, paddingBottom: 40 },
   greeting: {
     fontSize: 26,
