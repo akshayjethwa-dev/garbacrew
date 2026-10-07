@@ -1,4 +1,5 @@
 export interface GarbaCrewUser {
+  // ─── Identity (Epic 1) ───
   uid: string;
   phone: string | null;
   email: string | null;
@@ -6,7 +7,8 @@ export interface GarbaCrewUser {
   photoUrl: string | null;
   createdAt: Date;
   profileComplete: boolean;
-  // Profile fields
+
+  // ─── Profile fields (Epic 1) ───
   name?: string;
   age?: number;
   gender?: "male" | "female" | "other";
@@ -25,15 +27,38 @@ export interface GarbaCrewUser {
   favoriteActivitySong?: string;
   postActivityRitual?: string;
   bio?: string;
-  // Verification
+
+  // ─── Verification (Epic 1) ───
   isVerified: boolean;
   selfieVerified: boolean;
   selfieEmbedding?: number[];
   profileScore: number;
-  // Trust (Epic 2 will use these)
+
+  // ─── Epic 2: Dual Score & Trust System ───
+  /** Reliability score as a host (0-100). Starts at 50. */
   hostScore: number;
+  /** Reliability score as a guest (0-100). Starts at 50. */
   guestScore: number;
+  /** Non-monetary commitment stake (0-100). Starts at 50. */
   trustBalance: number;
+  /** Amount currently held in escrow for pending plans. */
+  escrowBalance: number;
+  /** Consecutive successful plans completed. */
+  streak: number;
+  /** Lifetime count of plans hosted. */
+  plansHosted: number;
+  /** Lifetime count of plans joined as participant. */
+  plansJoined: number;
+  /** Lifetime count of plans completed (hosted or joined). */
+  completedPlans: number;
+
+  // ─── Epic 2: Moderation fields ───
+  /** Last time a rating was applied to this user. */
+  lastRatedAt?: Date;
+  /** If set, user is suspended until this date. */
+  suspendedUntil?: Date;
+  /** If true, user is permanently banned. */
+  isBanned?: boolean;
 }
 
 export interface ProfileSetupData {

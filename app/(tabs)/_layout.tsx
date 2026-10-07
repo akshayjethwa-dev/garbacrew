@@ -14,14 +14,11 @@ export default function TabsLayout() {
           backgroundColor: "#FFF",
           borderTopColor: "#F0F0F0",
           borderTopWidth: 1,
-          height: Platform.OS === "web" ? 60 : 60,
-          paddingBottom: 8,
+          height: Platform.OS === "web" ? 64 : 60,
+          paddingBottom: Platform.OS === "web" ? 10 : 8,
           paddingTop: 8,
         },
-        tabBarLabelStyle: {
-          fontSize: 12,
-          fontWeight: "600",
-        },
+        tabBarLabelStyle: { fontSize: 12, fontWeight: "600" },
       }}
     >
       <Tabs.Screen
@@ -30,6 +27,15 @@ export default function TabsLayout() {
           title: "Discover",
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="search-outline" size={size ?? 24} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="trust"
+        options={{
+          title: "Trust",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="shield-checkmark-outline" size={size ?? 24} color={color} />
           ),
         }}
       />
