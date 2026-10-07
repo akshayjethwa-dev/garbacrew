@@ -122,6 +122,21 @@ export default function ProfileScreen() {
           </View>
         </View>
 
+        {/* ✅ Wallet link (Epic 8) */}
+        <TouchableOpacity
+          style={styles.safetyLink}
+          onPress={() => router.push("/wallet" as any)}
+        >
+          <Text style={styles.safetyLinkIcon}>💰</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.safetyLinkTitle}>Wallet</Text>
+            <Text style={styles.safetyLinkSub}>
+              Earnings, subscription, and boosts
+            </Text>
+          </View>
+          <Text style={styles.safetyLinkChevron}>›</Text>
+        </TouchableOpacity>
+
         {/* ✅ Trust & Safety link (Epic 7) */}
         <TouchableOpacity
           style={styles.safetyLink}

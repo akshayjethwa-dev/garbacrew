@@ -34,6 +34,14 @@ export default function RootLayout() {
           <Stack.Screen name="settings/emergency-contacts" />
           <Stack.Screen name="settings/blocked-users" />
           <Stack.Screen name="settings/disputes" />
+          {/* ─── Epic 8 ─── */}
+          <Stack.Screen name="wallet" />
+          <Stack.Screen name="subscription" />
+          <Stack.Screen name="boosts" />
+          <Stack.Screen
+            name="vendor/onboarding"
+            options={{ presentation: "modal", animation: "slide_from_bottom" }}
+          />
         </Stack>
       </AuthProvider>
     </ErrorBoundary>

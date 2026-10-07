@@ -32,3 +32,16 @@ export { onBlockCreated } from "./blocks";
 export { onReportCreated } from "./reports";
 export { onStrikeCreated, expireStrikes } from "./strikes";
 export { onDisputeCreated } from "./disputes";
+
+// ─── Epic 8: Monetization ───
+export {
+  onCreatePayoutForCompletedPlan,
+  processPendingPayouts,
+  createSubscriptionCheckout,
+  cancelSubscription,
+  processExpiredSubscriptions,
+  createBoostCheckout,
+  confirmBoostPayment,
+} from "./monetization";
+export { onVendorApplication } from "./vendors";
+export { chargePartnershipRetainers } from "./partnerships";
