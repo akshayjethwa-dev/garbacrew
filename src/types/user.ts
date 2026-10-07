@@ -51,6 +51,18 @@ export interface GarbaCrewUser {
   plansJoined: number;
   /** Lifetime count of plans completed (hosted or joined). */
   completedPlans: number;
+  /** Lifetime count of plans created. */
+  plansCreatedCount?: number;
+
+  // ─── Epic 5: Search ───
+  /** Lowercased name for prefix search. */
+  nameLower?: string;
+
+  // ─── Epic 6: Partner Discovery ───
+  /** Whether the user has opted into partner mode. */
+  lookingForPartner?: boolean;
+  /** Preferred partner vibe (e.g., "traditional", "techno"). */
+  partnerVibe?: string;
 
   // ─── Epic 2: Moderation fields ───
   /** Last time a rating was applied to this user. */

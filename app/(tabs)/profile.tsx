@@ -15,6 +15,7 @@ import { signOut } from "firebase/auth";
 import { auth } from "../../src/lib/firebase";
 import { useAuth } from "../../src/context/AuthContext";
 import { useProfileScore } from "../../src/hooks/useProfileScore";
+import PartnerModeToggle from "../../src/components/partner/PartnerModeToggle";
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -23,27 +24,19 @@ export default function ProfileScreen() {
 
   const performSignOut = async () => {
     try {
-      console.log("🚪 Signing out...");
       await signOut(auth);
-      console.log("✅ Signed out successfully");
-
-      // Explicitly navigate to login — index.tsx won't run from a tab screen
       router.replace("/(auth)/login");
     } catch (error: any) {
-      console.error("❌ Sign out failed:", error);
       Alert.alert("Error", error.message || "Failed to sign out.");
     }
   };
 
   const handleSignOut = () => {
-    // On web, use window.confirm — Alert.alert callbacks don't fire reliably
     if (Platform.OS === "web") {
       const confirmed = window.confirm("Are you sure you want to sign out?");
       if (confirmed) performSignOut();
       return;
     }
-
-    // On native, Alert.alert works as expected
     Alert.alert("Sign Out", "Are you sure you want to sign out?", [
       { text: "Cancel", style: "cancel" },
       {
@@ -55,7 +48,6 @@ export default function ProfileScreen() {
   };
 
   if (!user) {
-    // Safety fallback: if user is null but we're on the tab, send to login
     return (
       <View style={styles.fallbackContainer}>
         <TouchableOpacity
@@ -71,7 +63,7 @@ export default function ProfileScreen() {
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <ScrollView contentContainerStyle={styles.content}>
-        {/* Avatar */}
+        {/* Header */}
         <View style={styles.header}>
           {user.photoUrl ? (
             <Image source={{ uri: user.photoUrl }} style={styles.avatar} />
@@ -92,6 +84,9 @@ export default function ProfileScreen() {
           )}
         </View>
 
+        {/* Partner Mode toggle (Epic 6) */}
+        <PartnerModeToggle />
+
         {/* Profile Score */}
         <View style={styles.scoreSection}>
           <View style={styles.scoreCircle}>
@@ -111,7 +106,7 @@ export default function ProfileScreen() {
           )}
         </View>
 
-        {/* Epic 2 placeholders */}
+        {/* Epic 2 scores */}
         <View style={styles.scoresRow}>
           <View style={styles.scoreCard}>
             <Text style={styles.scoreCardLabel}>Host Score</Text>
@@ -126,6 +121,21 @@ export default function ProfileScreen() {
             <Text style={styles.scoreCardValue}>{user.trustBalance ?? 50}</Text>
           </View>
         </View>
+
+        {/* ✅ Trust & Safety link (Epic 7) */}
+        <TouchableOpacity
+          style={styles.safetyLink}
+          onPress={() => router.push("/settings/safety" as any)}
+        >
+          <Text style={styles.safetyLinkIcon}>🛡️</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.safetyLinkTitle}>Trust & Safety</Text>
+            <Text style={styles.safetyLinkSub}>
+              Emergency contacts, blocked users, disputes
+            </Text>
+          </View>
+          <Text style={styles.safetyLinkChevron}>›</Text>
+        </TouchableOpacity>
 
         {/* Sign Out */}
         <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
@@ -191,7 +201,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     paddingHorizontal: 24,
     gap: 12,
-    marginBottom: 32,
+    marginBottom: 24,
   },
   scoreCard: {
     flex: 1,
@@ -202,8 +212,24 @@ const styles = StyleSheet.create({
   },
   scoreCardLabel: { fontSize: 12, color: "#999", marginBottom: 6 },
   scoreCardValue: { fontSize: 22, fontWeight: "800", color: "#333" },
+  safetyLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginHorizontal: 24,
+    marginBottom: 16,
+    padding: 16,
+    backgroundColor: "#F8F8F8",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#EEE",
+  },
+  safetyLinkIcon: { fontSize: 24, marginRight: 12 },
+  safetyLinkTitle: { fontSize: 15, fontWeight: "700", color: "#1A1A1A" },
+  safetyLinkSub: { fontSize: 12, color: "#666", marginTop: 2 },
+  safetyLinkChevron: { fontSize: 24, color: "#CCC" },
   signOutButton: {
     marginHorizontal: 24,
+    marginTop: 8,
     borderWidth: 1.5,
     borderColor: "#FF3B30",
     borderRadius: 14,

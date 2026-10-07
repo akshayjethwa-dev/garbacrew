@@ -81,7 +81,6 @@ export default function PlanDetailScreen() {
   const capacityLabel =
     plan.capacity === 0 ? "Unlimited" : `${plan.spotsFilled} / ${plan.capacity}`;
 
-  // Determine the primary CTA based on role & approval mode
   let cta = "I'm In";
   let ctaDisabled = false;
 
@@ -94,12 +93,26 @@ export default function PlanDetailScreen() {
   else if (plan.costTotal > 0) cta = `Join & Pay ₹${plan.costPerPerson}`;
 
   const handlePrimaryAction = () => {
-    // Sprint 4 will implement the actual join flows here.
     Alert.alert(
       "Coming in Sprint 4",
       `The "${cta}" flow will be implemented in the next sprint.`
     );
   };
+
+  const handleInvite = () => {
+    router.push({
+      pathname: "/invite/create",
+      params: {
+        type: "plan",
+        targetId: plan.id,
+        targetTitle: plan.title,
+        targetActivity: plan.activity,
+        existingMembers: plan.participants.join(","),
+      },
+    });
+  };
+
+  const showInviteBtn = role === "host" || role === "participant";
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
@@ -110,9 +123,9 @@ export default function PlanDetailScreen() {
             <Text style={styles.backIcon}>←</Text>
           </TouchableOpacity>
           <Text style={styles.heroEmoji}>{act.emoji}</Text>
-          <Text style={[styles.heroTag, { backgroundColor: act.color }]}>
-            {act.label}
-          </Text>
+          <View style={[styles.heroTag, { backgroundColor: act.color }]}>
+            <Text style={styles.heroTagText}>{act.label}</Text>
+          </View>
         </View>
 
         <View style={styles.body}>
@@ -190,19 +203,27 @@ export default function PlanDetailScreen() {
               <Text style={styles.reqTitle}>Requirements</Text>
               <View style={styles.reqRow}>
                 {plan.requirements.verifiedOnly && (
-                  <View style={styles.reqBadge}><Text style={styles.reqText}>✓ Verified</Text></View>
+                  <View style={styles.reqBadge}>
+                    <Text style={styles.reqText}>✓ Verified</Text>
+                  </View>
                 )}
                 {plan.requirements.womenOnly && (
-                  <View style={styles.reqBadge}><Text style={styles.reqText}>♀ Women</Text></View>
+                  <View style={styles.reqBadge}>
+                    <Text style={styles.reqText}>♀ Women</Text>
+                  </View>
                 )}
                 {plan.requirements.minGuestScore != null && (
                   <View style={styles.reqBadge}>
-                    <Text style={styles.reqText}>Guest ≥ {plan.requirements.minGuestScore}</Text>
+                    <Text style={styles.reqText}>
+                      Guest ≥ {plan.requirements.minGuestScore}
+                    </Text>
                   </View>
                 )}
                 {plan.requirements.skillLevel && (
                   <View style={styles.reqBadge}>
-                    <Text style={styles.reqText}>{plan.requirements.skillLevel}</Text>
+                    <Text style={styles.reqText}>
+                      {plan.requirements.skillLevel}
+                    </Text>
                   </View>
                 )}
               </View>
@@ -220,7 +241,10 @@ export default function PlanDetailScreen() {
               {plan.participantDetails.slice(0, 6).map((p) => (
                 <View key={p.uid} style={styles.participantWrap}>
                   {p.photoUrl ? (
-                    <Image source={{ uri: p.photoUrl }} style={styles.participant} />
+                    <Image
+                      source={{ uri: p.photoUrl }}
+                      style={styles.participant}
+                    />
                   ) : (
                     <View style={[styles.participant, styles.avatarFallback]}>
                       <Text style={styles.avatarInitial}>
@@ -246,8 +270,17 @@ export default function PlanDetailScreen() {
 
       {/* Sticky CTA */}
       <View style={styles.ctaBar}>
+        {showInviteBtn && (
+          <TouchableOpacity style={styles.inviteBtn} onPress={handleInvite}>
+            <Text style={styles.inviteText}>Invite</Text>
+          </TouchableOpacity>
+        )}
         <TouchableOpacity
-          style={[styles.ctaBtn, ctaDisabled && { opacity: 0.5 }]}
+          style={[
+            styles.ctaBtn,
+            { flex: 1 },
+            ctaDisabled && { opacity: 0.5 },
+          ]}
           onPress={handlePrimaryAction}
           disabled={ctaDisabled}
         >
@@ -260,7 +293,12 @@ export default function PlanDetailScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#FFF" },
-  center: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#FFF" },
+  center: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#FFF",
+  },
   content: { paddingBottom: 40 },
   hero: {
     height: 180,
@@ -288,11 +326,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 5,
     borderRadius: 14,
-    color: "#FFF",
-    fontSize: 12,
-    fontWeight: "700",
-    overflow: "hidden",
   },
+  heroTagText: { color: "#FFF", fontSize: 12, fontWeight: "700" },
   body: { padding: 24 },
   title: { fontSize: 26, fontWeight: "800", color: "#1A1A1A", marginBottom: 8 },
   desc: { fontSize: 15, color: "#666", lineHeight: 22, marginBottom: 20 },
@@ -338,9 +373,20 @@ const styles = StyleSheet.create({
     borderRadius: 14,
   },
   reqText: { fontSize: 12, color: "#1565C0", fontWeight: "600" },
-  sectionTitle: { fontSize: 16, fontWeight: "800", color: "#1A1A1A", marginTop: 12, marginBottom: 12 },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#1A1A1A",
+    marginTop: 12,
+    marginBottom: 12,
+  },
   emptyText: { fontSize: 14, color: "#999", marginBottom: 24 },
-  avatarRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 24 },
+  avatarRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 24,
+  },
   participantWrap: {},
   participant: { width: 44, height: 44, borderRadius: 22 },
   moreBadge: {
@@ -358,7 +404,21 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFF",
     borderTopWidth: 1,
     borderTopColor: "#F0F0F0",
+    flexDirection: "row",
+    alignItems: "center",
   },
+  inviteBtn: {
+    paddingHorizontal: 20,
+    height: 56,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: "#E91E63",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 10,
+    backgroundColor: "#FFF",
+  },
+  inviteText: { color: "#E91E63", fontSize: 15, fontWeight: "700" },
   ctaBtn: {
     height: 56,
     backgroundColor: "#E91E63",

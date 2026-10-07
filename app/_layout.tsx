@@ -18,6 +18,22 @@ export default function RootLayout() {
             options={{ presentation: "modal", animation: "slide_from_bottom" }}
           />
           <Stack.Screen name="plan/[id]" />
+          <Stack.Screen
+            name="squad/create"
+            options={{ presentation: "modal", animation: "slide_from_bottom" }}
+          />
+          <Stack.Screen name="squad/[id]" />
+          <Stack.Screen
+            name="invite/create"
+            options={{ presentation: "modal", animation: "slide_from_bottom" }}
+          />
+          <Stack.Screen name="invitations/index" />
+          <Stack.Screen name="partner/matches" />
+          <Stack.Screen name="partner/chat/[id]" />
+          <Stack.Screen name="settings/safety" />
+          <Stack.Screen name="settings/emergency-contacts" />
+          <Stack.Screen name="settings/blocked-users" />
+          <Stack.Screen name="settings/disputes" />
         </Stack>
       </AuthProvider>
     </ErrorBoundary>
