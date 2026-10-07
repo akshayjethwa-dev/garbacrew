@@ -1,12 +1,9 @@
 /**
  * GarbaCrew Cloud Functions — Entry Point
- *
- * Epic 2: Dual Score & Trust System
  */
 
 import { setGlobalOptions } from "firebase-functions";
 
-// Global options — pins ALL functions to Mumbai (matches Firestore region)
 setGlobalOptions({
   maxInstances: 10,
   region: "asia-south1",
@@ -16,3 +13,6 @@ setGlobalOptions({
 export { onPlanStatusChange } from "./scores";
 export { onRatingCreated } from "./ratings";
 export { stakeTrustBalance, releaseTrustBalance } from "./trust";
+
+// ─── Epic 3: Plan System ───
+export { onPlanCreated } from "./plans";
