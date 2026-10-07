@@ -5,90 +5,100 @@ import {
   StyleSheet,
   ActivityIndicator,
   Alert,
+  Platform,
 } from "react-native";
 import * as Google from "expo-auth-session/providers/google";
 import * as WebBrowser from "expo-web-browser";
-import { signInWithGoogle } from "../../services/authService";
 import { useRouter } from "expo-router";
+import { signInWithGoogle, signInWithGoogleWeb } from "../../services/authService";
 
 WebBrowser.maybeCompleteAuthSession();
 
-// ⚠️ IMPORTANT: Replace these with your actual Google OAuth Client IDs
-// from the Google Cloud Console (https://console.cloud.google.com/apis/credentials)
-const GOOGLE_WEB_CLIENT_ID =
-  "490755900218-f0prm0ugk872u5khso67946ndu7e4q2m.apps.googleusercontent.com";
-const GOOGLE_IOS_CLIENT_ID =
-  "YOUR_IOS_CLIENT_ID.apps.googleusercontent.com";
-const GOOGLE_ANDROID_CLIENT_ID =
-  "YOUR_ANDROID_CLIENT_ID.apps.googleusercontent.com";
+const WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? "";
 
 export default function GoogleSignInButton() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
 
-  // ✅ Use useIdTokenAuthRequest to get id_token directly
+  // Native hook — only used on iOS/Android. On web we won't call promptAsync.
   const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
-    webClientId: GOOGLE_WEB_CLIENT_ID,
-    iosClientId: GOOGLE_IOS_CLIENT_ID,
-    androidClientId: GOOGLE_ANDROID_CLIENT_ID,
+    webClientId: WEB_CLIENT_ID,
   });
 
+  // Handle native response
   useEffect(() => {
+    if (Platform.OS === "web") return;
     if (response?.type === "success") {
-      // ✅ The id_token is inside response.params, not response.authentication
       const { id_token } = response.params;
-
       if (!id_token) {
-        Alert.alert(
-          "Sign-In Failed",
-          "Could not retrieve ID token. Please try again."
-        );
+        Alert.alert("Sign-In Failed", "Could not retrieve ID token from Google.");
         return;
       }
-
-      handleGoogleSignIn(id_token);
+      handleNativeSignIn(id_token);
     }
-
     if (response?.type === "error") {
       Alert.alert(
         "Sign-In Error",
-        response.error?.message || "Google sign-in failed."
+        response.error?.message ?? "Google sign-in was cancelled or failed."
       );
     }
   }, [response]);
 
-  const handleGoogleSignIn = async (idToken: string) => {
+  const handleNativeSignIn = async (idToken: string) => {
     setLoading(true);
     const result = await signInWithGoogle(idToken);
     setLoading(false);
+    handleResult(result);
+  };
 
-    if (result.user) {
-      if (result.needsPhone) {
-        Alert.alert(
-          "Phone Required",
-          "Please add your phone number to continue. This helps us keep GarbaCrew safe.",
-          [
-            {
-              text: "Add Phone",
-              onPress: () => router.replace("/(auth)/login"),
-            },
-          ]
-        );
-      } else if (result.user.profileComplete) {
-        router.replace("/(tabs)/crews");
-      } else {
-        router.replace("/(auth)/profile-setup");
-      }
+  const handleWebSignIn = async () => {
+    setLoading(true);
+    const result = await signInWithGoogleWeb();
+    setLoading(false);
+    handleResult(result);
+  };
+
+  const handleResult = (result: {
+    user: any;
+    needsPhone?: boolean;
+    error?: string;
+  }) => {
+    if (!result.user) {
+      Alert.alert("Error", result.error ?? "Google sign-in failed");
+      return;
+    }
+
+    if (result.needsPhone) {
+      Alert.alert(
+        "Phone Required",
+        "Please add your phone number to continue.",
+        [{ text: "OK", onPress: () => router.replace("/(auth)/login") }]
+      );
+      return;
+    }
+
+    if (result.user.profileComplete) {
+      router.replace("/(tabs)/crews");
     } else {
-      Alert.alert("Error", result.error || "Google sign-in failed");
+      router.replace("/(auth)/profile-setup");
     }
   };
 
+  const onPress = () => {
+    if (Platform.OS === "web") {
+      handleWebSignIn();
+    } else {
+      promptAsync();
+    }
+  };
+
+  const disabled = loading || (Platform.OS !== "web" && !request);
+
   return (
     <TouchableOpacity
-      style={styles.button}
-      onPress={() => promptAsync()}
-      disabled={!request || loading}
+      style={[styles.button, disabled && styles.buttonDisabled]}
+      onPress={onPress}
+      disabled={disabled}
     >
       {loading ? (
         <ActivityIndicator color="#333" />
@@ -113,6 +123,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     height: 56,
   },
+  buttonDisabled: { opacity: 0.6 },
   googleIcon: {
     fontSize: 20,
     fontWeight: "800",

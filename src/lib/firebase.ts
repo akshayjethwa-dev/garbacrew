@@ -1,10 +1,9 @@
 // src/lib/firebase.ts
 import { initializeApp, getApps, getApp } from "firebase/app";
-import { initializeAuth } from "firebase/auth";
-// @ts-ignore — getReactNativePersistence lives only in the React Native bundle
-import { getReactNativePersistence } from "@firebase/auth/dist/rn/index.js";
+import { getAuth, initializeAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
+import { Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const firebaseConfig = {
@@ -18,10 +17,29 @@ const firebaseConfig = {
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-export const auth = initializeAuth(app, {
-  persistence: getReactNativePersistence(AsyncStorage),
-});
+// ─────────────────────────────────────────────────────────
+// Platform-aware Auth initialization
+//
+// • On WEB: use getAuth() — it uses browser persistence (IndexedDB/localStorage)
+//   and includes web-only APIs like signInWithPopup and signInWithRedirect.
+//
+// • On NATIVE: use initializeAuth() with getReactNativePersistence so the
+//   session survives app restarts via AsyncStorage.
+// ─────────────────────────────────────────────────────────
+function createAuth() {
+  if (Platform.OS === "web") {
+    return getAuth(app);
+  }
+  // Native only:
+  // @ts-ignore — getReactNativePersistence lives in the RN bundle
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { getReactNativePersistence } = require("firebase/auth");
+  return initializeAuth(app, {
+    persistence: getReactNativePersistence(AsyncStorage),
+  });
+}
 
+export const auth = createAuth();
 export const db = getFirestore(app);
 export const storage = getStorage(app);
 
