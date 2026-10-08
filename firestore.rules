@@ -219,28 +219,52 @@ service cloud.firestore {
     }
 
     // ─────────────────────────────────────────────────────────
-    // Vendors (Epic 8)
+    // Photographers (Epic 9 — public read, admin SDK writes only)
     // ─────────────────────────────────────────────────────────
-    match /vendors/{vendorId} {
-      allow read: if request.auth != null
-        && (resource.data.status == "approved"
-            || resource.data.ownerUid == request.auth.uid);
-      allow create: if request.auth != null
-        && request.resource.data.ownerUid == request.auth.uid;
-      allow update: if false;
-    }
-
-    // ─────────────────────────────────────────────────────────
-    // Partnerships (Epic 8)
-    // ─────────────────────────────────────────────────────────
-    match /partnerships/{partnershipId} {
-      allow read: if request.auth != null
-        && resource.data.status == "active";
+    match /photographers/{docId} {
+      allow read: if true;
       allow write: if false;
     }
 
     // ─────────────────────────────────────────────────────────
-    // Admin alerts (Epic 8)
+    // Events (Epic 9 — public read, admin SDK writes only)
+    // ─────────────────────────────────────────────────────────
+    match /events/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // ─────────────────────────────────────────────────────────
+    // App Config (Epic 9 — auth read, admin SDK writes only)
+    // ─────────────────────────────────────────────────────────
+    match /appConfig/{docId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
+    // ─────────────────────────────────────────────────────────
+    // Vendors (Epic 8 + 9 — approved public, owner reads own,
+    // admin SDK writes only)
+    // ─────────────────────────────────────────────────────────
+    match /vendors/{vendorId} {
+      allow read: if (resource.data.status == "approved")
+        || (request.auth != null && resource.data.ownerUid == request.auth.uid);
+      allow create: if request.auth != null
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.status == "pending";
+      allow update: if false; // only admin SDK can flip status
+    }
+
+    // ─────────────────────────────────────────────────────────
+    // Partnerships (Epic 8 — public read for active)
+    // ─────────────────────────────────────────────────────────
+    match /partnerships/{partnershipId} {
+      allow read: if resource.data.status == "active";
+      allow write: if false;
+    }
+
+    // ─────────────────────────────────────────────────────────
+    // Admin alerts (Epic 8 + 9)
     // ─────────────────────────────────────────────────────────
     match /adminAlerts/{alertId} {
       allow read, write: if false;
@@ -254,7 +278,14 @@ service cloud.firestore {
     }
 
     // ─────────────────────────────────────────────────────────
-    // Chats (Epic 3 + 4)
+    // Admin UIDs (Epic 9 — admin SDK only)
+    // ─────────────────────────────────────────────────────────
+    match /adminUids/{uid} {
+      allow read, write: if false;
+    }
+
+    // ─────────────────────────────────────────────────────────
+    // Chats (Epic 3 + 4 + Sprint 4)
     // ─────────────────────────────────────────────────────────
     match /chats/{chatId} {
       allow read: if request.auth != null
@@ -265,6 +296,22 @@ service cloud.firestore {
 
       match /messages/{messageId} {
         allow read, write: if request.auth != null
+          && request.auth.uid in get(/databases/$(db)/documents/chats/$(chatId)).data.participants;
+      }
+
+      match /typing/{typingUid} {
+        allow read: if request.auth != null
+          && request.auth.uid in get(/databases/$(db)/documents/chats/$(chatId)).data.participants;
+        allow write: if request.auth != null
+          && request.auth.uid == typingUid
+          && request.auth.uid in get(/databases/$(db)/documents/chats/$(chatId)).data.participants;
+      }
+
+      match /reads/{readerUid} {
+        allow read: if request.auth != null
+          && request.auth.uid in get(/databases/$(db)/documents/chats/$(chatId)).data.participants;
+        allow write: if request.auth != null
+          && request.auth.uid == readerUid
           && request.auth.uid in get(/databases/$(db)/documents/chats/$(chatId)).data.participants;
       }
     }
@@ -281,7 +328,7 @@ service cloud.firestore {
     }
 
     // ─────────────────────────────────────────────────────────
-    // Escrow (Epic 2)
+    // Escrow (Epic 2 + Sprint 4)
     // ─────────────────────────────────────────────────────────
     match /escrow/{escrowId} {
       allow read: if request.auth != null

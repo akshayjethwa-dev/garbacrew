@@ -11,16 +11,16 @@ import {
   serverTimestamp,
   Timestamp,
   startAfter,
+  setDoc,
   QueryDocumentSnapshot,
 } from "firebase/firestore";
 import { db, auth } from "../lib/firebase";
-import { Plan, PlanDraft, getApprovalMode } from "../types/plan";
+import { Plan, PlanDraft, PlanJoinRequest } from "../types/plan";
 import { GarbaCrewUser } from "../types/user";
 
-/**
- * Create a new Plan in Firestore.
- * Uses a pre-generated doc ID so we can set chatId = planId.
- */
+// ─────────────────────────────────────────────────────────
+// Create Plan
+// ─────────────────────────────────────────────────────────
 export async function createPlan(
   host: GarbaCrewUser,
   draft: PlanDraft
@@ -30,7 +30,6 @@ export async function createPlan(
   if (!draft.startDate || !draft.startTime) throw new Error("Date/time is required");
   if (!draft.city) throw new Error("City is required");
 
-  // Compute start and end times
   const [hh, mm] = draft.startTime.split(":").map(Number);
   const start = new Date(draft.startDate);
   start.setHours(hh, mm, 0, 0);
@@ -40,15 +39,13 @@ export async function createPlan(
   }
 
   const end = new Date(start.getTime() + draft.durationMinutes * 60 * 1000);
-
-  // Compute cost per person
   const costPerPerson =
     draft.capacity > 0 ? Math.round(draft.costTotal / draft.capacity) : 0;
 
-  // Pre-generate the doc ref to get the ID for chatId
   const plansRef = collection(db, "plans");
   const newPlanRef = doc(plansRef);
   const planId = newPlanRef.id;
+  const chatId = `plan_${planId}`;
 
   const planDoc = {
     hostUid: host.uid,
@@ -87,32 +84,43 @@ export async function createPlan(
     pendingRequests: [],
     waitlist: [],
 
-    chatId: `plan_${planId}`,
+    chatId,
+    lastMessage: null,
+    lastMessageAt: null,
 
     status: "open",
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   };
 
-  // Use a transaction to ensure consistency
-  const { setDoc } = await import("firebase/firestore");
   await setDoc(newPlanRef, planDoc);
 
-  // Also create the empty chat document
-  const chatRef = doc(db, "chats", `plan_${planId}`);
-  await setDoc(chatRef, {
+  // Create empty chat doc
+  await setDoc(doc(db, "chats", chatId), {
     type: "plan",
     planId,
+    planTitle: draft.title.trim(),
     participants: [host.uid],
+    createdAt: serverTimestamp(),
+  });
+
+  // Welcome system message
+  await addDoc(collection(db, "chats", chatId, "messages"), {
+    fromUid: "system",
+    fromName: "GarbaCrew",
+    fromPhotoUrl: null,
+    type: "system",
+    text: `${host.name ?? "Host"} created this Plan. Say hi 👋`,
+    imageUrl: null,
     createdAt: serverTimestamp(),
   });
 
   return planId;
 }
 
-/**
- * Fetch a single Plan by ID.
- */
+// ─────────────────────────────────────────────────────────
+// Read
+// ─────────────────────────────────────────────────────────
 export async function getPlan(planId: string): Promise<Plan | null> {
   const ref = doc(db, "plans", planId);
   const snap = await getDoc(ref);
@@ -120,10 +128,6 @@ export async function getPlan(planId: string): Promise<Plan | null> {
   return { id: snap.id, ...snap.data() } as Plan;
 }
 
-/**
- * Discovery feed: fetch public plans in a city, sorted by start time.
- * Paginated with startAfter cursor.
- */
 export async function fetchPlans({
   city,
   activityFilter,
@@ -163,16 +167,57 @@ export async function fetchPlans({
   };
 }
 
-/**
- * Check if the current user is the host or participant of a plan.
- */
+// ─────────────────────────────────────────────────────────
+// Role helper
+// ─────────────────────────────────────────────────────────
 export function getPlanRole(
   plan: Plan,
   uid: string
 ): "host" | "participant" | "pending" | "waitlist" | "visitor" {
   if (plan.hostUid === uid) return "host";
   if (plan.participants.includes(uid)) return "participant";
-  if (plan.pendingRequests.includes(uid)) return "pending";
+  if (plan.pendingRequests?.some((r) => r.uid === uid)) return "pending";
   if (plan.waitlist.includes(uid)) return "waitlist";
   return "visitor";
+}
+
+// ─────────────────────────────────────────────────────────
+// Requirements check
+// ─────────────────────────────────────────────────────────
+export function checkRequirements(
+  plan: Plan,
+  user: GarbaCrewUser
+): { ok: boolean; reason?: string } {
+  const req = plan.requirements;
+  if (req.verifiedOnly && !user.isVerified) {
+    return { ok: false, reason: "This Plan requires a verified profile." };
+  }
+  if (req.womenOnly && user.gender !== "female") {
+    return { ok: false, reason: "This Plan is women-only." };
+  }
+  if (
+    req.minGuestScore != null &&
+    (user.guestScore ?? 50) < req.minGuestScore
+  ) {
+    return {
+      ok: false,
+      reason: `Minimum Guest Score required: ${req.minGuestScore}.`,
+    };
+  }
+  if (
+    req.skillLevel &&
+    user.danceSkill &&
+    user.danceSkill !== req.skillLevel &&
+    req.skillLevel === "advanced"
+  ) {
+    return {
+      ok: false,
+      reason: "This Plan is for advanced skill only.",
+    };
+  }
+  return { ok: true };
+}
+
+export function describeJoinRequest(req: PlanJoinRequest): string {
+  return `${req.name} requested to join`;
 }

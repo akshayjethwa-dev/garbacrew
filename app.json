@@ -25,14 +25,21 @@
         {
           "locationWhenInUsePermission": "GarbaCrew uses your location to find Plans near you."
         }
-      ]
+      ],
+      "@sentry/react-native"
     ],
     "ios": {
       "bundleIdentifier": "com.garbacrew.app",
       "supportsTablet": true
     },
     "android": {
-      "package": "com.garbacrew.app"
+      "package": "com.garbacrew.app",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -40,6 +47,13 @@
     },
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "d13a4298-ab28-49e2-8f35-5fee1956d595"
+      }
+    },
+    "owner": "akshay2888"
   }
 }

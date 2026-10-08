@@ -19,10 +19,10 @@ export type PlanStatus =
   | "no_show";
 
 export type ApprovalMode =
-  | "auto"         // Free + auto-approve
-  | "manual"       // Free + manual approve
-  | "paid_auto"    // Paid + auto-approve
-  | "paid_manual"; // Paid + manual approve
+  | "auto"
+  | "manual"
+  | "paid_auto"
+  | "paid_manual";
 
 export type PlanVisibility = "public" | "squad_only" | "private";
 
@@ -45,71 +45,105 @@ export interface PlanParticipant {
   approved: boolean;
 }
 
+/**
+ * Rich pending request object stored in plan.pendingRequests[].
+ * Keeps host UI fast without extra reads.
+ */
+export interface PlanJoinRequest {
+  uid: string;
+  name: string;
+  photoUrl: string | null;
+  guestScore: number;
+  isVerified: boolean;
+  age?: number;
+  bio?: string;
+  message: string;
+  requestedAt: Timestamp | any;
+  autoDeclineAt: Timestamp | any;
+}
+
 // ─── Main Plan document ───
 export interface Plan {
   id: string;
 
-  // Host info (denormalized for fast reads)
   hostUid: string;
   hostName: string;
   hostPhotoUrl: string | null;
   hostScore: number;
   hostVerified: boolean;
 
-  // Activity
   activity: PlanActivity;
-  activityCustom?: string; // only if activity === "custom"
+  activityCustom?: string;
   title: string;
   description: string;
 
-  // Time
   startTime: Timestamp | any;
   endTime: Timestamp | any;
   durationMinutes: number;
 
-  // Location
   locationName: string;
   locationAddress: string;
   city: string;
   latitude: number | null;
   longitude: number | null;
 
-  // Capacity & cost
-  capacity: number; // 0 = unlimited
-  costTotal: number; // 0 = free
-  costPerPerson: number; // computed = costTotal / capacity
+  capacity: number;
+  costTotal: number;
+  costPerPerson: number;
 
-  // Configuration
   requirements: PlanRequirements;
   approvalMode: ApprovalMode;
   visibility: PlanVisibility;
 
-  // Participants
-  participants: string[]; // uids
+  participants: string[];
   participantDetails: PlanParticipant[];
   spotsFilled: number;
 
-  // Requests & waitlist (used in Sprint 4)
-  pendingRequests: string[];
+  pendingRequests: PlanJoinRequest[];
   waitlist: string[];
 
-  // Chat
   chatId: string;
+  lastMessage: string | null;
+  lastMessageAt: Timestamp | any | null;
 
-  // Status
   status: PlanStatus;
   createdAt: Timestamp | any;
   updatedAt: Timestamp | any;
 }
 
-// ─── Draft type for the create wizard ───
+// ─── Chat ───
+export type ChatMessageType = "text" | "image" | "system";
+
+export interface ChatMessage {
+  id: string;
+  fromUid: string;
+  fromName: string;
+  fromPhotoUrl: string | null;
+  type: ChatMessageType;
+  text: string;
+  imageUrl: string | null;
+  createdAt: Timestamp | any;
+}
+
+export interface ChatTypingEntry {
+  uid: string;
+  name: string;
+  at: Timestamp | any;
+}
+
+export interface ChatReadEntry {
+  uid: string;
+  lastReadAt: Timestamp | any;
+}
+
+// ─── Draft type for create wizard (unchanged) ───
 export interface PlanDraft {
   activity: PlanActivity | null;
   activityCustom: string;
   title: string;
   description: string;
   startDate: Date | null;
-  startTime: string; // "18:30"
+  startTime: string;
   durationMinutes: number;
   locationName: string;
   locationAddress: string;
@@ -148,7 +182,6 @@ export const EMPTY_PLAN_DRAFT: PlanDraft = {
   visibility: "public",
 };
 
-// ─── Helper: derive approval mode from paid + manual ───
 export function getApprovalMode(isPaid: boolean, isManual: boolean): ApprovalMode {
   if (isPaid && isManual) return "paid_manual";
   if (isPaid) return "paid_auto";
@@ -163,3 +196,5 @@ export function isPaidMode(mode: ApprovalMode): boolean {
 export function isManualMode(mode: ApprovalMode): boolean {
   return mode === "manual" || mode === "paid_manual";
 }
+
+export const REQUEST_AUTO_DECLINE_HOURS = 48;

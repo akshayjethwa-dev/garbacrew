@@ -14,8 +14,15 @@ export { onPlanStatusChange } from "./scores";
 export { onRatingCreated } from "./ratings";
 export { stakeTrustBalance, releaseTrustBalance } from "./trust";
 
-// ─── Epic 3: Plan System ───
+// ─── Epic 3: Plan System (Sprint 3 + 4) ───
 export { onPlanCreated } from "./plans";
+export {
+  joinPlan,
+  leavePlan,
+  approveJoinRequest,
+  declineJoinRequest,
+  autoDeclineStaleRequests,
+} from "./planJoin";
 
 // ─── Epic 4: Squad System ───
 export { archiveInactiveSquads, onSquadUpdated } from "./squads";
@@ -45,3 +52,25 @@ export {
 } from "./monetization";
 export { onVendorApplication } from "./vendors";
 export { chargePartnershipRetainers } from "./partnerships";
+
+// ─── Epic 9: Admin Panel ───
+export {
+  adminWhoami,
+  adminVerify,
+  adminDashboard,
+  adminList,
+  adminUpsert,
+  adminDelete,
+  adminResolveReport,
+  adminResolveDispute,
+  adminUserAction,
+} from "./admin";
+
+// ─── Epic 10: Notifications ───
+export {
+  onChatMessageCreated,
+  onJoinRequestCreated,
+  onSOSNotification,
+  onInvitationCreated,
+  sendPlanReminders,
+} from "./notifications";

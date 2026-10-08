@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -8,13 +8,27 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  TextInput,
+  Modal,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { getPlan, getPlanRole } from "../../src/services/planService";
-import { Plan } from "../../src/types/plan";
+import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
+import {
+  doc,
+  onSnapshot,
+} from "firebase/firestore";
+import { db } from "../../src/lib/firebase";
+import { getPlan, getPlanRole, checkRequirements } from "../../src/services/planService";
+import {
+  joinPlan,
+  leavePlan,
+  approveJoinRequest,
+  declineJoinRequest,
+} from "../../src/services/planJoinService";
+import { Plan, PlanJoinRequest } from "../../src/types/plan";
 import { getActivityMeta } from "../../src/constants/activities";
 import { useAuth } from "../../src/context/AuthContext";
+import RequestCard from "../../src/components/plan/RequestCard";
 
 function formatFullDate(ts: any): string {
   if (!ts) return "TBD";
@@ -37,21 +51,171 @@ export default function PlanDetailScreen() {
   const [plan, setPlan] = useState<Plan | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [acting, setActing] = useState(false);
+  const [showRequestModal, setShowRequestModal] = useState(false);
+  const [requestMessage, setRequestMessage] = useState("");
 
+  // Live subscription to plan
   useEffect(() => {
     if (!id) return;
-    (async () => {
-      try {
-        const p = await getPlan(id);
-        if (!p) setError("Plan not found");
-        else setPlan(p);
-      } catch (e: any) {
-        setError(e.message ?? "Failed to load");
-      } finally {
+    const unsub = onSnapshot(
+      doc(db, "plans", id),
+      (snap) => {
+        if (!snap.exists()) {
+          setError("Plan not found");
+        } else {
+          setPlan({ id: snap.id, ...snap.data() } as Plan);
+        }
+        setLoading(false);
+      },
+      (err) => {
+        setError(err.message);
         setLoading(false);
       }
-    })();
+    );
+    return () => unsub();
   }, [id]);
+
+  // Refresh when screen regains focus
+  useFocusEffect(
+    useCallback(() => {
+      // Snapshot already keeps data fresh — this is just for re-entry
+    }, [])
+  );
+
+  const handlePrimaryAction = async () => {
+    if (!plan || !user) return;
+    const role = getPlanRole(plan, user.uid);
+
+    if (role === "host") {
+      router.push({
+        pathname: "/plan/chat/[id]" as any,
+        params: { id: plan.chatId.replace("plan_", "") },
+      });
+      return;
+    }
+
+    if (role === "participant") {
+      // Leave plan
+      Alert.alert(
+        "Leave Plan?",
+        "You'll be removed from the Plan and its chat. Your Trust Balance escrow will be returned.",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Leave",
+            style: "destructive",
+            onPress: async () => {
+              setActing(true);
+              try {
+                await leavePlan(plan.id);
+              } catch (e: any) {
+                Alert.alert("Could not leave", e.message);
+              } finally {
+                setActing(false);
+              }
+            },
+          },
+        ]
+      );
+      return;
+    }
+
+    if (role === "pending") {
+      Alert.alert(
+        "Cancel request?",
+        "You'll withdraw your join request.",
+        [
+          { text: "Keep", style: "cancel" },
+          {
+            text: "Cancel request",
+            style: "destructive",
+            onPress: async () => {
+              setActing(true);
+              try {
+                await leavePlan(plan.id);
+              } catch (e: any) {
+                Alert.alert("Error", e.message);
+              } finally {
+                setActing(false);
+              }
+            },
+          },
+        ]
+      );
+      return;
+    }
+
+    // Visitor — check requirements then join
+    const check = checkRequirements(plan, user);
+    if (!check.ok) {
+      Alert.alert("Can't join", check.reason ?? "You don't meet the requirements.");
+      return;
+    }
+
+    if (plan.approvalMode === "manual" || plan.approvalMode === "paid_manual") {
+      // Show request modal
+      setRequestMessage("");
+      setShowRequestModal(true);
+      return;
+    }
+
+    // Auto-approve join
+    await performJoin("");
+  };
+
+  const performJoin = async (message: string) => {
+    if (!plan) return;
+    setActing(true);
+    try {
+      const result = await joinPlan(plan.id, message);
+      setShowRequestModal(false);
+      if (result.status === "joined") {
+        Alert.alert("You're in! 🎉", "Say hi to the crew in the chat.");
+      } else if (result.status === "requested") {
+        Alert.alert(
+          "Request sent",
+          "The host will review and respond within 48 hours."
+        );
+      } else if (result.status === "waitlisted") {
+        Alert.alert("Waitlisted", "We'll notify you if a spot opens up.");
+      }
+      if (result.warning) {
+        console.warn("Join warning:", result.warning);
+      }
+    } catch (e: any) {
+      Alert.alert("Could not join", e.message ?? "Try again");
+    } finally {
+      setActing(false);
+    }
+  };
+
+  const handleApprove = async (requestUid: string) => {
+    if (!plan) return;
+    try {
+      await approveJoinRequest(plan.id, requestUid);
+    } catch (e: any) {
+      Alert.alert("Could not approve", e.message);
+    }
+  };
+
+  const handleDecline = async (requestUid: string) => {
+    if (!plan) return;
+    Alert.alert("Decline request?", "This person will not be added.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Decline",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await declineJoinRequest(plan.id, requestUid);
+          } catch (e: any) {
+            Alert.alert("Could not decline", e.message);
+          }
+        },
+      },
+    ]);
+  };
 
   if (loading) {
     return (
@@ -80,39 +244,23 @@ export default function PlanDetailScreen() {
     plan.costTotal > 0 ? `₹${plan.costPerPerson} / person` : "Free";
   const capacityLabel =
     plan.capacity === 0 ? "Unlimited" : `${plan.spotsFilled} / ${plan.capacity}`;
+  const isFull = plan.capacity > 0 && plan.spotsFilled >= plan.capacity;
 
+  // Compute CTA
   let cta = "I'm In";
   let ctaDisabled = false;
-
-  if (role === "host") cta = "Manage Plan";
-  else if (role === "participant") cta = "You're in ✓";
+  if (role === "host") cta = "Open Chat";
+  else if (role === "participant") cta = "Leave Plan";
   else if (role === "pending") cta = "Request pending…";
   else if (role === "waitlist") cta = "On waitlist";
+  else if (isFull) cta = "Join Waitlist";
   else if (plan.approvalMode === "manual" || plan.approvalMode === "paid_manual")
     cta = "Request to Join";
   else if (plan.costTotal > 0) cta = `Join & Pay ₹${plan.costPerPerson}`;
 
-  const handlePrimaryAction = () => {
-    Alert.alert(
-      "Coming in Sprint 4",
-      `The "${cta}" flow will be implemented in the next sprint.`
-    );
-  };
-
-  const handleInvite = () => {
-    router.push({
-      pathname: "/invite/create",
-      params: {
-        type: "plan",
-        targetId: plan.id,
-        targetTitle: plan.title,
-        targetActivity: plan.activity,
-        existingMembers: plan.participants.join(","),
-      },
-    });
-  };
-
   const showInviteBtn = role === "host" || role === "participant";
+  const pendingRequests = (plan.pendingRequests ?? []) as PlanJoinRequest[];
+  const showApprovals = role === "host" && pendingRequests.length > 0;
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
@@ -154,7 +302,7 @@ export default function PlanDetailScreen() {
             </View>
           </View>
 
-          {/* Key info rows */}
+          {/* Info rows */}
           <View style={styles.infoBox}>
             <View style={styles.infoRow}>
               <Text style={styles.infoIcon}>🕒</Text>
@@ -230,6 +378,23 @@ export default function PlanDetailScreen() {
             </View>
           )}
 
+          {/* Pending requests (host view) */}
+          {showApprovals && (
+            <View style={styles.requestsSection}>
+              <Text style={styles.sectionTitle}>
+                Join requests ({pendingRequests.length})
+              </Text>
+              {pendingRequests.map((r) => (
+                <RequestCard
+                  key={r.uid}
+                  request={r}
+                  onApprove={() => handleApprove(r.uid)}
+                  onDecline={() => handleDecline(r.uid)}
+                />
+              ))}
+            </View>
+          )}
+
           {/* Participants */}
           <Text style={styles.sectionTitle}>
             Who's coming ({plan.participantDetails.length})
@@ -241,10 +406,7 @@ export default function PlanDetailScreen() {
               {plan.participantDetails.slice(0, 6).map((p) => (
                 <View key={p.uid} style={styles.participantWrap}>
                   {p.photoUrl ? (
-                    <Image
-                      source={{ uri: p.photoUrl }}
-                      style={styles.participant}
-                    />
+                    <Image source={{ uri: p.photoUrl }} style={styles.participant} />
                   ) : (
                     <View style={[styles.participant, styles.avatarFallback]}>
                       <Text style={styles.avatarInitial}>
@@ -271,7 +433,21 @@ export default function PlanDetailScreen() {
       {/* Sticky CTA */}
       <View style={styles.ctaBar}>
         {showInviteBtn && (
-          <TouchableOpacity style={styles.inviteBtn} onPress={handleInvite}>
+          <TouchableOpacity
+            style={styles.inviteBtn}
+            onPress={() => {
+              router.push({
+                pathname: "/invite/create" as any,
+                params: {
+                  type: "plan",
+                  targetId: plan.id,
+                  targetTitle: plan.title,
+                  targetActivity: plan.activity,
+                  existingMembers: plan.participants.join(","),
+                },
+              });
+            }}
+          >
             <Text style={styles.inviteText}>Invite</Text>
           </TouchableOpacity>
         )}
@@ -282,11 +458,56 @@ export default function PlanDetailScreen() {
             ctaDisabled && { opacity: 0.5 },
           ]}
           onPress={handlePrimaryAction}
-          disabled={ctaDisabled}
+          disabled={ctaDisabled || acting}
         >
-          <Text style={styles.ctaText}>{cta}</Text>
+          {acting ? (
+            <ActivityIndicator color="#FFF" />
+          ) : (
+            <Text style={styles.ctaText}>{cta}</Text>
+          )}
         </TouchableOpacity>
       </View>
+
+      {/* Request modal */}
+      <Modal visible={showRequestModal} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Request to Join</Text>
+            <Text style={styles.modalDesc}>
+              Add an optional message to the host. They'll review within 48
+              hours.
+            </Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="e.g., I'm a cricket regular, looking forward to it!"
+              placeholderTextColor="#999"
+              value={requestMessage}
+              onChangeText={setRequestMessage}
+              multiline
+              maxLength={300}
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.modalCancel}
+                onPress={() => setShowRequestModal(false)}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalConfirm}
+                onPress={() => performJoin(requestMessage)}
+                disabled={acting}
+              >
+                {acting ? (
+                  <ActivityIndicator color="#FFF" />
+                ) : (
+                  <Text style={styles.modalConfirmText}>Send request</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -373,6 +594,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
   },
   reqText: { fontSize: 12, color: "#1565C0", fontWeight: "600" },
+  requestsSection: { marginTop: 8, marginBottom: 24 },
   sectionTitle: {
     fontSize: 16,
     fontWeight: "800",
@@ -435,4 +657,50 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   backTextAlt: { color: "#FFF", fontWeight: "700", fontSize: 16 },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  modalContent: {
+    backgroundColor: "#FFF",
+    borderRadius: 16,
+    padding: 20,
+    width: "100%",
+  },
+  modalTitle: { fontSize: 18, fontWeight: "800", color: "#1A1A1A" },
+  modalDesc: { fontSize: 13, color: "#666", marginTop: 6, marginBottom: 16 },
+  modalInput: {
+    borderWidth: 1.5,
+    borderColor: "#E0E0E0",
+    borderRadius: 12,
+    minHeight: 90,
+    padding: 12,
+    fontSize: 14,
+    backgroundColor: "#FAFAFA",
+    textAlignVertical: "top",
+  },
+  modalActions: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 16,
+    justifyContent: "flex-end",
+  },
+  modalCancel: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: "#E0E0E0",
+  },
+  modalCancelText: { fontSize: 14, fontWeight: "600", color: "#666" },
+  modalConfirm: {
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: "#E91E63",
+  },
+  modalConfirmText: { fontSize: 14, fontWeight: "700", color: "#FFF" },
 });
