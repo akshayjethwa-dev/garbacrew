@@ -1,10 +1,58 @@
 import * as Sentry from "@sentry/react-native";
 import Constants from "expo-constants";
+import { Platform } from "react-native";
+
+let initialized = false;
+
+/**
+ * Basic sanity check for a Sentry DSN.
+ * A real DSN looks like: https://<32+ hex chars>@o12345.ingest.sentry.io/1234567
+ */
+function isValidDsn(dsn: string | undefined): boolean {
+  if (!dsn) return false;
+  // Reject the obvious placeholder values
+  if (
+    dsn.includes("your-dsn") ||
+    dsn.includes("your-project-id") ||
+    dsn === "undefined" ||
+    dsn === "null"
+  ) {
+    return false;
+  }
+  // Basic structural check
+  try {
+    const url = new URL(dsn);
+    if (url.protocol !== "https:" && url.protocol !== "http:") return false;
+    if (!url.username) return false;
+    if (!url.hostname.includes(".")) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export function initSentry() {
+  if (initialized) return;
+
   const dsn = process.env.EXPO_PUBLIC_SENTRY_DSN;
-  if (!dsn) {
-    console.warn("Sentry DSN missing — crash reporting disabled");
+
+  // Skip on web — Sentry RN SDK requires native runtime
+  if (Platform.OS === "web") {
+    if (__DEV__) {
+      console.log("[Sentry] Skipped on web platform");
+    }
+    initialized = true;
+    return;
+  }
+
+  // Skip if DSN is missing or a placeholder
+  if (!isValidDsn(dsn)) {
+    if (__DEV__) {
+      console.log(
+        "[Sentry] Skipped — no valid DSN set (EXPO_PUBLIC_SENTRY_DSN missing or placeholder)"
+      );
+    }
+    initialized = true;
     return;
   }
 
@@ -22,25 +70,39 @@ export function initSentry() {
     attachStacktrace: true,
     beforeSend(event) {
       // Filter out harmless errors
-      if (event.exception?.values?.[0]?.value?.includes("Non-Error promise rejection")) {
-        return null;
-      }
+      const msg = event.exception?.values?.[0]?.value ?? "";
+      if (msg.includes("Non-Error promise rejection")) return null;
       return event;
     },
   });
+
+  initialized = true;
 }
 
 export function setSentryUser(uid: string, email?: string | null) {
-  Sentry.setUser({ id: uid, email: email ?? undefined });
+  if (!initialized) return;
+  try {
+    Sentry.setUser({ id: uid, email: email ?? undefined });
+  } catch {
+    // Sentry may not be initialized
+  }
 }
 
 export function clearSentryUser() {
-  Sentry.setUser(null);
+  if (!initialized) return;
+  try {
+    Sentry.setUser(null);
+  } catch {
+    // Sentry may not be initialized
+  }
 }
 
 export function captureError(error: Error, context?: Record<string, any>) {
-  if (context) {
-    Sentry.setContext("extra", context);
+  if (!initialized) return;
+  try {
+    if (context) Sentry.setContext("extra", context);
+    Sentry.captureException(error);
+  } catch {
+    // Ignore
   }
-  Sentry.captureException(error);
 }

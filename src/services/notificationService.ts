@@ -11,19 +11,29 @@ import {
 import { db } from "../lib/firebase";
 import { router } from "expo-router";
 
-// Global handler — how notifications appear when the app is foregrounded
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-  }),
-});
+// Guard: expo-notifications' native APIs are unavailable on web.
+const isWeb = Platform.OS === "web";
 
+// Global handler — only installed on native.
+// Calling setNotificationHandler on web throws, so we skip it entirely.
+if (!isWeb) {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowBanner: true,
+      shouldShowList: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+    }),
+  });
+}
+
+// ─────────────────────────────────────────────────────────
 // Android notification channels
+// ─────────────────────────────────────────────────────────
 export async function setupNotificationChannels(): Promise<void> {
+  if (isWeb) return;
   if (Platform.OS !== "android") return;
+
   await Notifications.setNotificationChannelAsync("default", {
     name: "Default",
     importance: Notifications.AndroidImportance.HIGH,
@@ -44,14 +54,15 @@ export async function setupNotificationChannels(): Promise<void> {
   });
 }
 
+// ─────────────────────────────────────────────────────────
 // Permission + token registration
+// ─────────────────────────────────────────────────────────
 export async function registerForPushNotifications(
   uid: string
 ): Promise<string | null> {
-  // Web: use the browser's FCM token instead
-  if (Platform.OS === "web") {
-    return null;
-  }
+  // Web doesn't support Expo push tokens in this SDK version.
+  // Return null silently — the app continues to work.
+  if (isWeb) return null;
 
   // Emulators can't receive FCM
   if (!Device.isDevice) {
@@ -60,7 +71,8 @@ export async function registerForPushNotifications(
   }
 
   // Request permission
-  const { status: existingStatus } = await Notifications.getPermissionsAsync();
+  const { status: existingStatus } =
+    await Notifications.getPermissionsAsync();
   let finalStatus = existingStatus;
 
   if (existingStatus !== "granted") {
@@ -87,7 +99,6 @@ export async function registerForPushNotifications(
     });
     const token = tokenResponse.data;
 
-    // Persist the token so Cloud Functions can reach this device
     await setDoc(
       doc(db, "deviceTokens", uid),
       {
@@ -107,35 +118,66 @@ export async function registerForPushNotifications(
   }
 }
 
-export async function unregisterPushNotifications(uid: string): Promise<void> {
+export async function unregisterPushNotifications(
+  uid: string
+): Promise<void> {
+  if (isWeb) return;
   try {
     await deleteDoc(doc(db, "deviceTokens", uid));
-  } catch (error) {
+  } catch {
     // Ignore
   }
 }
 
+// ─────────────────────────────────────────────────────────
+// Notification tap → route
+// ─────────────────────────────────────────────────────────
 /**
  * Called once at app boot — wires the notification-tap listener
- * to the router so tapping a notification opens the right screen.
+ * to the router. On web, returns a no-op cleanup function.
  */
 export function attachNotificationTapHandler(): () => void {
-  const subscription = Notifications.addNotificationResponseReceivedListener(
-    (response) => {
-      const data = response.notification.request.content.data as any;
-      routeFromNotification(data);
-    }
-  );
+  // Web has no native notification listener
+  if (isWeb) {
+    return () => {};
+  }
 
-  // Also handle the case where the app was launched from a notification
-  Notifications.getLastNotificationResponseAsync().then((response) => {
-    if (response) {
-      const data = response.notification.request.content.data as any;
-      routeFromNotification(data);
-    }
-  });
+  let subscription: { remove: () => void } | null = null;
 
-  return () => subscription.remove();
+  try {
+    subscription = Notifications.addNotificationResponseReceivedListener(
+      (response) => {
+        const data = response.notification.request.content.data as any;
+        routeFromNotification(data);
+      }
+    );
+
+    // Handle the case where the app was launched from a notification
+    Notifications.getLastNotificationResponseAsync()
+      .then((response) => {
+        if (response) {
+          const data = response.notification.request.content.data as any;
+          routeFromNotification(data);
+        }
+      })
+      .catch((error) => {
+        // Not fatal — the notification listener above still works
+        console.warn(
+          "[Notifications] getLastNotificationResponseAsync failed:",
+          error?.message ?? error
+        );
+      });
+  } catch (error) {
+    console.warn("[Notifications] Could not attach tap handler:", error);
+  }
+
+  return () => {
+    try {
+      subscription?.remove();
+    } catch {
+      // Ignore
+    }
+  };
 }
 
 /**
@@ -144,7 +186,7 @@ export function attachNotificationTapHandler(): () => void {
 function routeFromNotification(data: any): void {
   if (!data) return;
 
-  const { type, planId, squadId, chatId, invitationId, reportId } = data;
+  const { type, planId, squadId, chatId } = data;
 
   try {
     switch (type) {
@@ -156,9 +198,9 @@ function routeFromNotification(data: any): void {
       case "plan_reminder":
         if (planId) router.push(`/plan/${planId}` as any);
         break;
+
       case "chat_message":
         if (chatId) {
-          // chatId looks like "plan_abc123" or "squad_xyz789"
           if (chatId.startsWith("plan_")) {
             router.push(`/plan/chat/${chatId.replace("plan_", "")}` as any);
           } else if (chatId.startsWith("squad_")) {
@@ -166,22 +208,28 @@ function routeFromNotification(data: any): void {
           }
         }
         break;
+
       case "squad_invite":
       case "squad_archived":
         if (squadId) router.push(`/squad/${squadId}` as any);
         break;
+
       case "invitation":
         router.push("/invitations" as any);
         break;
+
       case "sos":
         if (planId) router.push(`/plan/${planId}` as any);
         break;
+
       case "report_resolved":
         router.push("/settings/safety" as any);
         break;
+
       case "rating_prompt":
         if (planId) router.push(`/plan/${planId}` as any);
         break;
+
       default:
         break;
     }

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -9,10 +9,14 @@ import {
   Platform,
   Alert,
   ActivityIndicator,
+  BackHandler,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
-import { usePlanCreateStore, TOTAL_PLAN_STEPS } from "../../src/store/planCreateStore";
+import { useRouter, useFocusEffect } from "expo-router";
+import {
+  usePlanCreateStore,
+  TOTAL_PLAN_STEPS,
+} from "../../src/store/planCreateStore";
 import { useAuth } from "../../src/context/AuthContext";
 import { createPlan } from "../../src/services/planService";
 import { checkTrustAccess } from "../../src/services/accessControl";
@@ -29,11 +33,103 @@ import Step8Review from "../../src/components/plan-create/Step8Review";
 export default function CreatePlanScreen() {
   const router = useRouter();
   const { user } = useAuth();
-  const { currentStep, nextStep, prevStep, draft, reset } = usePlanCreateStore();
+  const { currentStep, nextStep, prevStep, draft, reset } =
+    usePlanCreateStore();
   const [saving, setSaving] = useState(false);
 
   // Guard: user must be able to create Plans
   const access = checkTrustAccess(user, "create_plan");
+
+  // ─────────────────────────────────────────────────────────
+  // Exit flow — works on web AND native
+  // ─────────────────────────────────────────────────────────
+  const performExit = useCallback(() => {
+    // 1. Reset the wizard state FIRST
+    reset();
+
+    // 2. Navigate away with fallbacks
+    try {
+      if (router.canGoBack()) {
+        router.back();
+      } else {
+        // Direct deep-link or hard reload — nothing to go back to
+        router.replace("/(tabs)/crews" as any);
+      }
+    } catch (err) {
+      // Last-resort fallback
+      router.replace("/(tabs)/crews" as any);
+    }
+  }, [reset, router]);
+
+  const handleClose = useCallback(() => {
+    // ─── WEB: use window.confirm (Alert.alert callbacks don't fire) ───
+    if (Platform.OS === "web") {
+      // @ts-ignore — window exists on web
+      const confirmed = window.confirm(
+        "Discard this Plan?\n\nYour progress will be lost."
+      );
+      if (confirmed) performExit();
+      return;
+    }
+
+    // ─── NATIVE: Alert.alert works fine ───
+    Alert.alert(
+      "Discard Plan?",
+      "Your progress will be lost.",
+      [
+        { text: "Keep editing", style: "cancel" },
+        {
+          text: "Discard",
+          style: "destructive",
+          onPress: performExit,
+        },
+      ],
+      { cancelable: true }
+    );
+  }, [performExit]);
+
+  // ─────────────────────────────────────────────────────────
+  // Android hardware back button → close flow
+  // ─────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      handleClose();
+      return true; // prevent default
+    });
+    return () => sub.remove();
+  }, [handleClose]);
+
+  // ─────────────────────────────────────────────────────────
+  // Web: warn before closing the browser tab with unsaved data
+  // ─────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+
+    const hasProgress =
+      !!draft.activity ||
+      !!draft.title.trim() ||
+      !!draft.startTime ||
+      currentStep > 0;
+
+    if (!hasProgress) return;
+
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+
+    // @ts-ignore
+    window.addEventListener("beforeunload", handler);
+    return () => {
+      // @ts-ignore
+      window.removeEventListener("beforeunload", handler);
+    };
+  }, [draft, currentStep]);
+
+  // ─────────────────────────────────────────────────────────
+  // Guard: user can't create Plans (low Trust Balance, etc.)
+  // ─────────────────────────────────────────────────────────
   if (!access.allowed) {
     return (
       <SafeAreaView style={styles.container} edges={["top"]}>
@@ -43,9 +139,9 @@ export default function CreatePlanScreen() {
           <Text style={styles.deniedText}>{access.reason}</Text>
           <TouchableOpacity
             style={styles.deniedButton}
-            onPress={() => router.back()}
+            onPress={() => router.replace("/(tabs)/crews" as any)}
           >
-            <Text style={styles.deniedButtonText}>Go back</Text>
+            <Text style={styles.deniedButtonText}>Go back to Discover</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -71,31 +167,44 @@ export default function CreatePlanScreen() {
           return false;
         }
         if (draft.activity === "custom" && !draft.activityCustom.trim()) {
-          Alert.alert("Describe the activity", "Please describe your custom activity.");
+          Alert.alert(
+            "Describe the activity",
+            "Please describe your custom activity."
+          );
           return false;
         }
         return true;
+
       case 1:
         if (!draft.title.trim()) {
           Alert.alert("Add a title", "Give your Plan a short title.");
           return false;
         }
         if (!draft.startDate) {
-          Alert.alert("Pick a date", "Enter a valid date in YYYY-MM-DD format.");
+          Alert.alert(
+            "Pick a date",
+            "Enter a valid date in YYYY-MM-DD format."
+          );
           return false;
         }
         if (!/^\d{2}:\d{2}$/.test(draft.startTime)) {
-          Alert.alert("Pick a time", "Enter time in HH:MM format (e.g., 18:30).");
+          Alert.alert(
+            "Pick a time",
+            "Enter time in HH:MM format (e.g., 18:30)."
+          );
           return false;
         }
-        const [hh, mm] = draft.startTime.split(":").map(Number);
-        const start = new Date(draft.startDate);
-        start.setHours(hh, mm, 0, 0);
-        if (start.getTime() <= Date.now()) {
-          Alert.alert("Future date", "Plan start time must be in the future.");
-          return false;
+        {
+          const [hh, mm] = draft.startTime.split(":").map(Number);
+          const start = new Date(draft.startDate);
+          start.setHours(hh, mm, 0, 0);
+          if (start.getTime() <= Date.now()) {
+            Alert.alert("Future date", "Plan start time must be in the future.");
+            return false;
+          }
         }
         return true;
+
       case 2:
         if (!draft.city) {
           Alert.alert("Pick a city", "Select the city for your Plan.");
@@ -106,6 +215,7 @@ export default function CreatePlanScreen() {
           return false;
         }
         return true;
+
       case 3:
         if (draft.costTotal > 0 && draft.capacity === 0) {
           Alert.alert(
@@ -115,6 +225,7 @@ export default function CreatePlanScreen() {
           return false;
         }
         return true;
+
       default:
         return true;
     }
@@ -126,7 +237,6 @@ export default function CreatePlanScreen() {
       nextStep();
       return;
     }
-    // Final step — create the Plan
     await submitPlan();
   };
 
@@ -136,26 +246,15 @@ export default function CreatePlanScreen() {
     try {
       const planId = await createPlan(user, draft);
       reset();
-      router.replace({ pathname: "/plan/[id]", params: { id: planId } });
+      router.replace({
+        pathname: "/plan/[id]" as any,
+        params: { id: planId },
+      });
     } catch (e: any) {
       Alert.alert("Could not create Plan", e.message ?? "Try again.");
     } finally {
       setSaving(false);
     }
-  };
-
-  const handleClose = () => {
-    Alert.alert("Discard Plan?", "Your progress will be lost.", [
-      { text: "Keep editing", style: "cancel" },
-      {
-        text: "Discard",
-        style: "destructive",
-        onPress: () => {
-          reset();
-          router.back();
-        },
-      },
-    ]);
   };
 
   const progressPct = ((currentStep + 1) / TOTAL_PLAN_STEPS) * 100;
@@ -166,22 +265,30 @@ export default function CreatePlanScreen() {
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
-        {/* Header */}
+        {/* ─── Header ─── */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={handleClose} style={styles.closeBtn}>
+          <TouchableOpacity
+            onPress={handleClose}
+            style={styles.closeBtn}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            accessibilityRole="button"
+            accessibilityLabel="Close Plan creation"
+          >
             <Text style={styles.closeText}>✕</Text>
           </TouchableOpacity>
-          <View style={{ flex: 1, marginHorizontal: 12 }}>
-            <View style={styles.progressTrack}>
-              <View style={[styles.progressFill, { width: `${progressPct}%` }]} />
-            </View>
+
+          <View style={styles.progressTrack}>
+            <View
+              style={[styles.progressFill, { width: `${progressPct}%` }]}
+            />
           </View>
+
           <Text style={styles.stepLabel}>
             {currentStep + 1}/{TOTAL_PLAN_STEPS}
           </Text>
         </View>
 
-        {/* Step content */}
+        {/* ─── Step content ─── */}
         <ScrollView
           style={{ flex: 1 }}
           contentContainerStyle={{ paddingTop: 16 }}
@@ -190,15 +297,23 @@ export default function CreatePlanScreen() {
           {steps[currentStep]}
         </ScrollView>
 
-        {/* Footer nav */}
+        {/* ─── Footer nav ─── */}
         <View style={styles.footer}>
           {currentStep > 0 && (
-            <TouchableOpacity style={styles.backBtn} onPress={prevStep}>
+            <TouchableOpacity
+              style={styles.backBtn}
+              onPress={prevStep}
+              disabled={saving}
+            >
               <Text style={styles.backText}>Back</Text>
             </TouchableOpacity>
           )}
           <TouchableOpacity
-            style={[styles.nextBtn, currentStep === 0 && { flex: 1, marginLeft: 0 }, saving && { opacity: 0.6 }]}
+            style={[
+              styles.nextBtn,
+              currentStep === 0 && { flex: 1, marginLeft: 0 },
+              saving && { opacity: 0.6 },
+            ]}
             onPress={handleNext}
             disabled={saving}
           >
@@ -225,10 +340,19 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: "#F0F0F0",
+    gap: 12,
   },
-  closeBtn: { padding: 8 },
-  closeText: { fontSize: 20, color: "#666", fontWeight: "600" },
+  closeBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#F5F5F5",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  closeText: { fontSize: 18, color: "#333", fontWeight: "600" },
   progressTrack: {
+    flex: 1,
     height: 6,
     backgroundColor: "#F0F0F0",
     borderRadius: 3,
@@ -270,8 +394,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   deniedEmoji: { fontSize: 64, marginBottom: 16 },
-  deniedTitle: { fontSize: 22, fontWeight: "800", color: "#1A1A1A", textAlign: "center" },
-  deniedText: { fontSize: 14, color: "#666", textAlign: "center", marginTop: 8, lineHeight: 20 },
+  deniedTitle: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: "#1A1A1A",
+    textAlign: "center",
+  },
+  deniedText: {
+    fontSize: 14,
+    color: "#666",
+    textAlign: "center",
+    marginTop: 8,
+    lineHeight: 20,
+  },
   deniedButton: {
     marginTop: 32,
     paddingHorizontal: 32,
